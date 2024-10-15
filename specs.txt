@@ -1,0 +1,15 @@
+stack language => uiua makes things easy
+functional language => stl that implements many trivial math functions
+server language => designed to be used for webservers
+type avoidant => limited typed variables or structs. only function signatures
+implicit => everything should be implicit but can be explicit
+logical assets => where keyword => logical pattern matching
+
+keywords should be case insensitive
+spelling shouldn't matter but bad spelling should result in warning
+
+example syntax:
+
+(i64) dot_product(i64array x, i64array y) => (sum *) where (len x == len y)
+
+(ui4array) caesar_cypher(i4array s, i8 n) => (+)
