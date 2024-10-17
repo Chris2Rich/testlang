@@ -16,12 +16,14 @@ tok = [
   "identifier",
   "string_literal",
   "number_literal",
-  
   "binding",
+  
+  #stack ops
   "pop",
   "flip",
   "dupe",
 
+  #math ops
   "add",
   "subtract",
   "multiply",
@@ -29,6 +31,7 @@ tok = [
   "modulo",
   "equality",
 
+  #syntax
   "right_arr",
   "left_arr",
   "right_bra",
@@ -37,7 +40,7 @@ tok = [
   "left_cur"
   ]
 
-tok = {tok[-i -1]: i for i in range(-1, -len(tok)-1, -1)}
+tok = {tok[-i -1]: tok[-i -1] for i in range(-1, -len(tok)-1, -1)}
   
 
 tok_stream = []
@@ -47,7 +50,7 @@ class tokenizer:
   def Next(self):
     i = ""
     if self.c >= len(s):
-      yield tok.eof
+      yield ("eof", tok["eof"])
     while s[self.c] == " ":
       self.c += 1
     if s[self.c] == "/":
@@ -57,56 +60,52 @@ class tokenizer:
           self.c += 1
       else:
         self.c += 1
-        yield tok["divide"]
+        yield (s[self.c-1], tok["divide"])
     if s[self.c] == "+":
       self.c += 1
-      yield tok["add"]
+      yield (s[self.c-1], tok["add"])
     if s[self.c] == "-":
       self.c += 1
-      yield tok["sutraself.ct"]
+      yield (s[self.c-1], tok["sutraself.ct"])
     if s[self.c] == "*":
       self.c += 1
-      yield tok["multiply"]
+      yield (s[self.c-1], tok["multiply"])
     if s[self.c] == "<":
       self.c += 1
-      yield tok["left_arr"]
+      yield (s[self.c-1], tok["left_arr"])
     if s[self.c] == ">":
       self.c += 1
-      yield tok ["right_arr"]
+      yield (s[self.c-1], tok ["right_arr"])
     if s[self.c] == "(":
       self.c += 1
-      yield tok["left_bra"]
+      yield (s[self.c-1], tok["left_bra"])
     if s[self.c] == ")":
       self.c += 1
-      yield tok["right_bra"]
+      yield (s[self.c-1], tok["right_bra"])
     if s[self.c] == "{":
       self.c += 1
-      yield tok["right_self.cur"]
+      yield (s[self.c-1], tok["right_cur"])
     if s[self.c] == "}":
       self.c += 1
-      yield tok["left_self.cur"]
+      yield (s[self.c-1], tok["left_cur"])
     if s[self.c] == "=":
       self.c += 1
-      if s[self.c+1] == ">":
+      if s[self.c] == ">":
         self.c += 1
-        yield tok["binding"]
+        yield (s[self.c-2] + s[self.c-1], tok["binding"])
       else:
-        yield tok["equality"]
+        yield (s[self.c-1], tok["equality"])
     else:
       while not s[self.c] in " +=*/<>(){};:#\"\'" and self.c != len(s):
         i += s[self.c]
         self.c += 1 
-      yield i
+      yield (i, tok["identifier"])
       self.c += 1
 
 toker = tokenizer()
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
-tok_stream.append(next(toker.Next(), None))
+t = next(toker.Next(), None)
+while t != ("eof", tok["eof"]):
+    tok_stream.append(t)
+    t = next(toker.Next(), None)
 
 print(tok_stream)
