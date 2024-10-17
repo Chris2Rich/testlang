@@ -17,6 +17,8 @@ tok = [
   "string_literal",
   "number_literal",
   "binding",
+  "delimiter",
+  "newline",
   
   #stack ops
   "pop",
@@ -63,6 +65,12 @@ class tokenizer:
       else:
         self.c += 1
         yield (s[self.c-1], tok["divide"])
+    if s[self.c] == "\n":
+      self.c += 1
+      yield (s[self.c-1], tok["newline"])
+    if s[self.c] == ",":
+      self.c += 1
+      yield (s[self.c-1], tok["delimiter"])
     if s[self.c] == "+":
       self.c += 1
       yield (s[self.c-1], tok["add"])
