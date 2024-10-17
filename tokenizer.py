@@ -9,31 +9,47 @@ parser.add_argument("output")
 
 args = parser.parse_args()
 i_file = open(args.input, "r")
-i_text = [j for i in i_file.readlines() for j in i]
+s = [j for i in i_file.readlines() for j in i]
 i_file.close()
 
-tok = {
-    "eof" : -1,
-    "identifier" : -2,
-    "literal" : -3,
-    "binding" : -4,
-    "equality": -5,
-    "hi_ord_f": -6,
-    
-    "+" : -7,
-    "-" : -8,
-    "*" : -9,
-    "/" : -10,
-    "%" : -11,
-    ">" : -12,
-    "<" : -13
-}
+tok = ["eof",
+  "identifier",
+  "literal",
+  "binding",
+  "equality",
+  "hi_ord_f",
+  
+  "add",
+  "subtract",
+  "multiply",
+  "divide",
+  "modulo",
+
+  "right_arr",
+  "left_arr"]
+
+  tok = { for i in range(-1, -len(tok)-1)}
+  
 
 tok_stream = []
 
 class tokenizer:
-    cursor = 0
-    def Next():
-        cursor += 1
-        
-print(i_text)
+  c = 0
+  def Next():
+    try:
+      if c == len(s):
+        return tok.eof
+      while s[c] == " ":
+        c += 1
+      if s[c] == "/":
+        #skip comments
+        if s[c+1] == "/":
+          while s[c] != "\n":
+            c += 1
+        else:
+          return tok["divide"]
+      c += 1
+    except:
+      raise Exception("Error in tokenization - cursor position: " + c)
+    
+print(tok_stream)
