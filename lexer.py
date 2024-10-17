@@ -36,6 +36,8 @@ tok = [
   "left_arr",
   "right_bra",
   "left_bra",
+  "right_squ",
+  "left_squ",
   "right_cur",
   "left_cur"
   ]
@@ -66,10 +68,19 @@ class tokenizer:
       yield (s[self.c-1], tok["add"])
     if s[self.c] == "-":
       self.c += 1
-      yield (s[self.c-1], tok["sutraself.ct"])
+      yield (s[self.c-1], tok["subtract"])
     if s[self.c] == "*":
       self.c += 1
       yield (s[self.c-1], tok["multiply"])
+    if s[self.c] == ";":
+      self.c += 1
+      yield (s[self.c-1], tok["pop"])
+    if s[self.c] == ":":
+      self.c += 1
+      yield (s[self.c-1], tok["flip"])
+    if s[self.c] == "#":
+      self.c += 1
+      yield (s[self.c-1], tok["dupe"])
     if s[self.c] == "<":
       self.c += 1
       yield (s[self.c-1], tok["left_arr"])
@@ -82,6 +93,12 @@ class tokenizer:
     if s[self.c] == ")":
       self.c += 1
       yield (s[self.c-1], tok["right_bra"])
+    if s[self.c] == "[":
+      self.c += 1
+      yield (s[self.c-1], tok["left_squ"])
+    if s[self.c] == "]":
+      self.c += 1
+      yield (s[self.c-1], tok["right_squ"])
     if s[self.c] == "{":
       self.c += 1
       yield (s[self.c-1], tok["right_cur"])
@@ -96,7 +113,7 @@ class tokenizer:
       else:
         yield (s[self.c-1], tok["equality"])
     else:
-      while not s[self.c] in " +=*/<>(){};:#\"\'" and self.c != len(s):
+      while not s[self.c] in " +=*/<>(){}[],;:#\"\'" and self.c != len(s):
         i += s[self.c]
         self.c += 1 
       yield (i, tok["identifier"])
