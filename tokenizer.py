@@ -17,7 +17,6 @@ tok = ["eof",
   "literal",
   "binding",
   "equality",
-  "hi_ord_f",
   
   "add",
   "subtract",
@@ -28,13 +27,14 @@ tok = ["eof",
   "right_arr",
   "left_arr"]
 
-  tok = { for i in range(-1, -len(tok)-1)}
+tok = {tok[-i -1]: i for i in range(-1, -len(tok)-1, -1)}
   
 
 tok_stream = []
 
 class tokenizer:
   c = 0
+  i = ""
   def Next():
     try:
       if c == len(s):
@@ -52,4 +52,4 @@ class tokenizer:
     except:
       raise Exception("Error in tokenization - cursor position: " + c)
     
-print(tok_stream)
+print(tok)
