@@ -113,10 +113,15 @@ class tokenizer:
       else:
         yield (s[self.c-1], tok["equality"])
     else:
-      while not s[self.c] in " +=*/<>(){}[],;:#\"\'" and self.c != len(s):
+      while not s[self.c] in " +=*/<>(){}[],;:#" and self.c != len(s):
         i += s[self.c]
-        self.c += 1 
-      yield (i, tok["identifier"])
+        self.c += 1
+      if i.isnumeric() or (i.replace(".", "").isnumeric() and i.count(".") == 1):
+        yield (i, tok["number_literal"])
+      elif (i[0] == "\"" and i[-1] == "\"") or (i[0] == "\'" and i[-1] == "\'"):
+        yield (i, tok["string_literal"])
+      else:
+        yield (i, tok["identifier"])
       self.c += 1
 
 toker = tokenizer()
