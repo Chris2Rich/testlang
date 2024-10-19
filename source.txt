@@ -1,2 +1,2 @@
-i64 dot_product(i64array a, i64array b) => reduce<+> *
-dot_product [4  ,5,6 ,7] [1,2,3, 4]
+i64 dot_product(i64array a i64array b) => reduce<+> *
+dot_product [4 5,6 ,7] [1,2,3, 4]

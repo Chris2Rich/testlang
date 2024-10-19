@@ -21,7 +21,6 @@ tok = [
   "string_literal",
   "number_literal",
   "binding",
-  "delimiter",
   "newline",
   
   #stack ops
@@ -70,7 +69,7 @@ class tokenizer:
       i = ""
       if self.c >= len(s):
         yield ("eof", tok["eof"])
-      while s[self.c] == " ":
+      while s[self.c] == " " or s[self.c] == ",":
         self.c += 1
       if s[self.c] == "/":
         #skip self.comments
@@ -84,9 +83,6 @@ class tokenizer:
       if s[self.c] == "\n":
         self.c += 1
         yield (s[self.c-1], tok["newline"])
-      if s[self.c] == ",":
-        self.c += 1
-        yield (s[self.c-1], tok["delimiter"])
 
       if s[self.c] == "+":
         self.c += 1
