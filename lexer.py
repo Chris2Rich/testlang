@@ -12,6 +12,7 @@ args.output = "out.txt"
 
 i_file = open(args.input, "r")
 s = [j for i in i_file.readlines() for j in i]
+s.append("\n")
 i_file.close()
 
 tok = [
@@ -28,13 +29,24 @@ tok = [
   "flip",
   "dupe",
 
-  #math ops
+  #logic ops
+  "not",
+
+  #bit ops
+  "bit_not",
+  "bit_and",
+  "bit_or",
+  "bit_xor",
+
+  #binary ops
   "add",
   "subtract",
   "multiply",
   "divide",
   "modulo",
   "equality",
+  "right_shift",
+  "left_shift",
 
   #syntax
   "right_arr",
@@ -68,12 +80,14 @@ class tokenizer:
         else:
           self.c += 1
           yield (s[self.c-1], tok["divide"])
+
       if s[self.c] == "\n":
         self.c += 1
         yield (s[self.c-1], tok["newline"])
       if s[self.c] == ",":
         self.c += 1
         yield (s[self.c-1], tok["delimiter"])
+
       if s[self.c] == "+":
         self.c += 1
         yield (s[self.c-1], tok["add"])
@@ -83,6 +97,7 @@ class tokenizer:
       if s[self.c] == "*":
         self.c += 1
         yield (s[self.c-1], tok["multiply"])
+
       if s[self.c] == ";":
         self.c += 1
         yield (s[self.c-1], tok["pop"])
@@ -92,12 +107,39 @@ class tokenizer:
       if s[self.c] == "#":
         self.c += 1
         yield (s[self.c-1], tok["dupe"])
+
+      if s[self.c] == "!":
+        self.c += 1
+        yield (s[self.c-1], tok["not"])
+      if s[self.c] == "&":
+        self.c += 1
+        yield (s[self.c-1], tok["bit_and"])
+      if s[self.c] == "|":
+        self.c += 1
+        yield (s[self.c-1], tok["bit_or"])
+      if s[self.c] == "^":
+        self.c += 1
+        yield (s[self.c-1], tok["bit_xor"])
+
+      if s[self.c] == "~":
+        self.c += 1
+        yield (s[self.c-1], tok["bit_not"])
       if s[self.c] == "<":
         self.c += 1
-        yield (s[self.c-1], tok["left_arr"])
+        if s[self.c + 1] == "<":
+          self.c += 1
+          yield(s[self.c-2] + s[self.c-1], tok["left_shift"])
+        else:
+          self.c += 1
+          yield (s[self.c-1], tok["left_arr"])
       if s[self.c] == ">":
         self.c += 1
-        yield (s[self.c-1], tok ["right_arr"])
+        if s[self.c + 1] == ">":
+          self.c += 1
+          yield(s[self.c-2] + s[self.c-1], tok["right_shift"])
+        else:
+          self.c += 1
+          yield (s[self.c-1], tok["right_arr"])
       if s[self.c] == "(":
         self.c += 1
         yield (s[self.c-1], tok["left_bra"])
@@ -116,6 +158,7 @@ class tokenizer:
       if s[self.c] == "}":
         self.c += 1
         yield (s[self.c-1], tok["left_cur"])
+
       if s[self.c] == "=":
         self.c += 1
         if s[self.c] == ">":
@@ -124,7 +167,7 @@ class tokenizer:
         else:
           yield (s[self.c-1], tok["equality"])
       else:
-        while not s[self.c] in " +=*/<>(){}[],;:#" and self.c != len(s):
+        while not s[self.c] in " \n+=*/<>(){}[],;:#!^&|" and self.c != len(s):
           i += s[self.c]
           self.c += 1
         if i.isnumeric() or (i.replace(".", "").isnumeric() and i.count(".") == 1):
@@ -135,7 +178,7 @@ class tokenizer:
           yield (i, tok["identifier"])
         self.c += 1
     except Exception as err:
-      print(f"Error on line: {self.c}. Traceback => \n {err}")
+      print(f"Error on character: {self.c} => \n {err}")
       raise
 
 toker = tokenizer()
