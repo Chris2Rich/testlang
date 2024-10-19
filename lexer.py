@@ -3,10 +3,13 @@ import argparse
 # i64 dot_product(i64array a, i64array b) => {reduce<+> *}
 
 parser = argparse.ArgumentParser()
-parser.add_argument("input")
-parser.add_argument("output")
+# parser.add_argument("input")
+# parser.add_argument("output")
 
 args = parser.parse_args()
+args.input = "source.txt"
+args.output = "out.txt"
+
 i_file = open(args.input, "r")
 s = [j for i in i_file.readlines() for j in i]
 i_file.close()
@@ -46,7 +49,6 @@ tok = [
 
 tok = {tok[-i -1]: tok[-i -1] for i in range(-1, -len(tok)-1, -1)}
   
-
 tok_stream = []
 
 class tokenizer:
