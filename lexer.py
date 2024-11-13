@@ -1,6 +1,5 @@
 import argparse
 # example syntax
-# i64 dot_product(i64array a, i64array b) => {reduce<+> *}
 
 parser = argparse.ArgumentParser()
 # parser.add_argument("input")
@@ -8,7 +7,7 @@ parser = argparse.ArgumentParser()
 
 args = parser.parse_args()
 args.input = "source.txt"
-args.output = "out.txt"
+args.output = "lexer_output.txt"
 
 i_file = open(args.input, "r")
 s = [j for i in i_file.readlines() for j in i]
@@ -180,7 +179,7 @@ class tokenizer:
 toker = tokenizer()
 t = next(toker.Next(), None)
 while t != ("eof", tok["eof"]):
-    tok_stream.append(t)
+    tok_stream.append(t[::-1])
     t = next(toker.Next(), None)
 
 print(tok_stream)
