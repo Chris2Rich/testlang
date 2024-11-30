@@ -6,7 +6,7 @@ parser = argparse.ArgumentParser()
 
 args = parser.parse_args()
 args.input = "source.txt"
-args.output = "ast.txt"
+args.output = "out.txt"
 
 i_file = open(args.input, "r")
 s = [j for i in i_file.readlines() for j in i]
