@@ -212,7 +212,7 @@ class Inliner:
                 tok_stream.insert(self.c, i)
               self.c += len(self.identifiers[id])
               del tok_stream[self.c]
-              self.c -= 1
+              self.c -= len(self.identifiers[id]) + 1
       if self.c == len(tok_stream) - 1:
         yield 0
       else:
