@@ -179,7 +179,6 @@ t = next(tokenizer.Next(), None)
 while t != ("eof", tok["eof"]):
     tok_stream.append(t)
     t = next(tokenizer.Next(), None)
-n = len(tok_stream)
 
 class Node:
   def __init__(self, data):
@@ -195,19 +194,17 @@ class Inliner:
   identifiers = {}
   def Next(self):
     try:
-      global n
       if tok_stream[self.c][1] == "identifier":
-        if self.c != n:
+        if self.c != len(tok_stream):
           if tok_stream[self.c + 1][1] == "binding":
             sub = []
             temp = self.c + 2
-            while temp != n and tok_stream[temp][1] != "newline":
+            while temp != len(tok_stream) and tok_stream[temp][1] != "newline":
               sub.append(tok_stream[temp])
               temp += 1
             self.identifiers.update({tok_stream[self.c][0]: sub})
             del tok_stream[self.c:temp+1]
-            self.c -= temp
-            n -= temp
+            self.c = -1
           else:
             if tok_stream[self.c][0] in self.identifiers:
               id =  tok_stream[self.c][0]
@@ -215,8 +212,8 @@ class Inliner:
                 tok_stream.insert(self.c, i)
               self.c += len(self.identifiers[id])
               del tok_stream[self.c]
-              n += len(self.identifiers[id]) - 1
-      if self.c == n - 2:
+              self.c -= 1
+      if self.c == len(tok_stream) - 1:
         yield 0
       else:
         self.c += 1
