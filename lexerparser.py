@@ -227,7 +227,7 @@ class Inliner:
       raise
 
 inliner = Inliner()
-t = 1
-while t != 0:
-  t = next(inliner.Next(), None)
+i = 1
+while i != 0:
+  i = next(inliner.Next(), None)
 print(tok_stream)
