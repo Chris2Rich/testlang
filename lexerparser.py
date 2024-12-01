@@ -10,6 +10,7 @@ args.output = "out.txt"
 
 i_file = open(args.input, "r")
 s = [j for i in i_file.readlines() for j in i]
+s.append("\n")
 i_file.close()
 
 tok = [
@@ -119,19 +120,17 @@ class Tokenizer:
         yield (s[self.c-1], tok["bit_not"])
       if s[self.c] == "<":
         self.c += 1
-        if s[self.c + 1] == "<":
+        if s[self.c] == "<":
           self.c += 1
           yield(s[self.c-2] + s[self.c-1], tok["left_shift"])
         else:
-          self.c += 1
           yield (s[self.c-1], tok["left_arr"])
       if s[self.c] == ">":
         self.c += 1
-        if s[self.c + 1] == ">":
+        if s[self.c] == ">":
           self.c += 1
           yield(s[self.c-2] + s[self.c-1], tok["right_shift"])
         else:
-          self.c += 1
           yield (s[self.c-1], tok["right_arr"])
       if s[self.c] == "(":
         self.c += 1
