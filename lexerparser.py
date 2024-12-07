@@ -1,11 +1,12 @@
 import argparse
+import collections
 
 parser = argparse.ArgumentParser()
 # parser.add_argument("input")
 # parser.add_argument("output")
 
 args = parser.parse_args()
-args.input = "source.txt"
+args.input = "source1.txt"
 args.output = "out.txt"
 
 i_file = open(args.input, "r")
@@ -191,22 +192,51 @@ class Inliner:
   c = 0
 
   identifiers = {}
+  call_tree = {}
+
+  def explore_call_tree(self, t):
+    #BFS always finds first loop
+    visited=[]
+    queue = []
+    for i in self.call_tree[t]:
+      queue.append(i)
+    while len(queue) > 0:
+      if t in queue:
+        return queue
+      else:
+        a = queue.pop()
+        if a not in self.call_tree:
+          pass
+        else:
+          for i in self.call_tree[a]:
+            queue.append(i)
+    return False
+
   def Next(self):
     try:
       if tok_stream[self.c][1] == "identifier":
         if self.c != len(tok_stream):
           if tok_stream[self.c + 1][1] == "binding":
+            root = tok_stream[self.c][0]
+            self.identifiers.update({root: None})
+            self.call_tree.update({root: []})
             sub = []
             temp = self.c + 2
             while temp != len(tok_stream) and tok_stream[temp][1] != "newline":
+              if tok_stream[temp][1] == "identifier":
+                self.call_tree[root].append(tok_stream[temp][0])
+              
               sub.append(tok_stream[temp])
               temp += 1
+            if self.explore_call_tree(tok_stream[self.c][0]):
+              raise Exception(f"Error: function \"{root}\" is recursive")
+
             self.identifiers.update({tok_stream[self.c][0]: sub})
             del tok_stream[self.c:temp+1]
             self.c = -1
           else:
             if tok_stream[self.c][0] in self.identifiers:
-              id =  tok_stream[self.c][0]
+              id = tok_stream[self.c][0]
               for i in self.identifiers[id][::-1]:
                 tok_stream.insert(self.c, i)
               self.c += len(self.identifiers[id])
