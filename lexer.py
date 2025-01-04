@@ -2,12 +2,10 @@ import argparse
 import collections
 
 parser = argparse.ArgumentParser()
-# parser.add_argument("input")
-# parser.add_argument("output")
+parser.add_argument("input")
+parser.add_argument("output")
 
 args = parser.parse_args()
-args.input = "source1.txt"
-args.output = "out.txt"
 
 i_file = open(args.input, "r")
 s = [j for i in i_file.readlines() for j in i]
@@ -256,4 +254,8 @@ inliner = Inliner()
 i = 1
 while i != 0:
   i = next(inliner.Next(), None)
-print(tok_stream)
+
+o_file = open(args.output, "w")
+for i in tok_stream:
+  o_file.write(str(i) + "\n")
+o_file.close()
