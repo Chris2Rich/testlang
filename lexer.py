@@ -50,7 +50,7 @@ def tokenize(source_code):
     c = 0
     single_char_map = {
         '\n': TokenType.NL, '+': TokenType.ADD, '-': TokenType.SUB, '*': TokenType.MUL,
-        ';': TokenType.POP, ':': TokenType.FLIP, '
+        ';': TokenType.POP, ':': TokenType.FLIP,
         '&': TokenType.BAN, '|': TokenType.BOR, '^': TokenType.BXR, '~': TokenType.BNT,
         '(': TokenType.LBRA, ')': TokenType.RBRA, '[': TokenType.LSQU, ']': TokenType.RSQU,
         '{': TokenType.LCUR, '}': TokenType.RCUR,
