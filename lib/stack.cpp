@@ -1,3 +1,4 @@
+#include <cstring>
 template <typename T>
 struct stack {
 private:
@@ -22,9 +23,7 @@ public:
     
     stack(const stack& other) : capacity(other.capacity), top(other.top) {
         items = new T[capacity];
-        for (int i = 0; i <= top; i++) {
-            items[i] = other.items[i];
-        }
+        memcpy(items, other.items, capacity * sizeof(T));
     }
     
     stack& operator=(const stack& other) {
@@ -53,14 +52,14 @@ public:
     
     T pop() {
         if (Empty()) {
-            return T();
+            throw ;
         }
         return items[top--];
     }
     
     T& peek() {
         if (Empty()) {
-            return T();
+            throw ;
         }
         return items[top];
     }

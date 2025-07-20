@@ -1,307 +1,358 @@
 import argparse
 import collections
+from enum import Enum
 
-parser = argparse.ArgumentParser()
-parser.add_argument("input")
-parser.add_argument("output")
+class TokenType(Enum):
+    EOF = 0
+    ID = 1
+    STR = 2
+    ARR = 3
+    NUM = 4
+    BND = 5
+    NL = 6
 
-args = parser.parse_args()
+    POP = 10
+    FLIP = 11
+    DUPE = 12
 
-i_file = open(args.input, "r")
-s = [j for i in i_file.readlines() for j in i]
-s.append("\n")
-i_file.close()
+    NOT = 20
 
-tok = [
-  "eof",
-  "id",
-  "str",
-  "arr",
-  "num",
-  "bnd",
-  "nl",
-  
-  #stack ops
-  "pop",
-  "flip",
-  "dupe",
+    BNT = 30
+    BAN = 31
+    BOR = 32
+    BXR = 33
 
-  #logic ops
-  "not",
+    ADD = 40
+    SUB = 41
+    MUL = 42
+    DIV = 43
+    MOD = 44
+    EQU = 45
+    RSH = 46
+    LSH = 47
 
-  #bit ops
-  "bnt",
-  "ban",
-  "bor",
-  "bxr",
+    RARR = 50
+    LARR = 51
+    RBRA = 52
+    LBRA = 53
+    RSQU = 54
+    LSQU = 55
+    RCUR = 56
+    LCUR = 57
 
-  #binary ops
-  "add",
-  "sub",
-  "mul",
-  "div",
-  "mod",
-  "equ",
-  "rsh",
-  "lsh",
+    DEF_START = 100
+    DEF_END = 101
 
-  #syntax
-  "rarr",
-  "larr",
-  "rbra",
-  "lbra",
-  "rsqu",
-  "lsqu",
-  "rcur",
-  "lcur"
-  ]
 
-tok = {tok[-i -1]: tok[-i -1] for i in range(-1, -len(tok)-1, -1)}
-  
-tok_stream = []
+Token = collections.namedtuple('Token', ['value', 'type'])
 
-class Tokenizer:
-  c = 0
-  def Next(self):
-    try:
-      i = ""
-      if self.c >= len(s):
-        yield ("eof", tok["eof"])
-      while s[self.c] == " " or s[self.c] == ",":
-        self.c += 1
-      if s[self.c] == "/":
-        #skip comments
-        if s[self.c+1] == "/":
-          while s[self.c] != "\n":
-            self.c += 1
+def tokenize(source_code):
+    c = 0
+    single_char_map = {
+        '\n': TokenType.NL, '+': TokenType.ADD, '-': TokenType.SUB, '*': TokenType.MUL,
+        ';': TokenType.POP, ':': TokenType.FLIP, '
+        '&': TokenType.BAN, '|': TokenType.BOR, '^': TokenType.BXR, '~': TokenType.BNT,
+        '(': TokenType.LBRA, ')': TokenType.RBRA, '[': TokenType.LSQU, ']': TokenType.RSQU,
+        '{': TokenType.LCUR, '}': TokenType.RCUR,
+    }
+
+    while c < len(source_code):
+        char = source_code[c]
+
+        if char in " ,":
+            c += 1
+            continue
+
+        if char == '/' and c + 1 < len(source_code) and source_code[c+1] == '/':
+            while c < len(source_code) and source_code[c] != '\n':
+                c += 1
+            continue
+        
+        if char in single_char_map:
+            yield Token(char, single_char_map[char])
+            c += 1
+            continue
+        
+        if char == '<':
+            if c + 1 < len(source_code) and source_code[c+1] == '<':
+                yield Token("<<", TokenType.LSH)
+                c += 2
+            else:
+                yield Token("<", TokenType.LARR)
+                c += 1
+            continue
+
+        if char == '>':
+            if c + 1 < len(source_code) and source_code[c+1] == '>':
+                yield Token(">>", TokenType.RSH)
+                c += 2
+            else:
+                yield Token(">", TokenType.RARR)
+                c += 1
+            continue
+
+        if char == '=':
+            if c + 1 < len(source_code) and source_code[c+1] == '>':
+                yield Token("=>", TokenType.BND)
+                c += 2
+            else:
+                yield Token("=", TokenType.EQU)
+                c += 1
+            continue
+        
+        if char.isalpha() or char == '_':
+            start = c
+            while c < len(source_code) and (source_code[c].isalnum() or source_code[c] == '_'):
+                c += 1
+            value = source_code[start:c]
+            yield Token(value, TokenType.ID)
+        elif char.isdigit():
+            start = c
+            has_dot = False
+            while c < len(source_code) and (source_code[c].isdigit() or (source_code[c] == '.' and not has_dot)):
+                if source_code[c] == '.':
+                    has_dot = True
+                c += 1
+            value = source_code[start:c]
+            yield Token(value, TokenType.NUM)
+        elif char == '"' or char == "'":
+            quote = char
+            start = c
+            c += 1
+            while c < len(source_code) and source_code[c] != quote:
+                c += 1
+            c += 1
+            value = source_code[start:c]
+            yield Token(value, TokenType.STR)
         else:
-          self.c += 1
-          yield (s[self.c-1], tok["div"])
+            c += 1
 
-      if s[self.c] == "\n":
-        self.c += 1
-        yield (s[self.c-1], tok["nl"])
+    yield Token("eof", TokenType.EOF)
 
-      if s[self.c] == "+":
-        self.c += 1
-        yield (s[self.c-1], tok["add"])
-      if s[self.c] == "-":
-        self.c += 1
-        yield (s[self.c-1], tok["sub"])
-      if s[self.c] == "*":
-        self.c += 1
-        yield (s[self.c-1], tok["mul"])
 
-      if s[self.c] == ";":
-        self.c += 1
-        yield (s[self.c-1], tok["pop"])
-      if s[self.c] == ":":
-        self.c += 1
-        yield (s[self.c-1], tok["flip"])
-      if s[self.c] == "#":
-        self.c += 1
-        yield (s[self.c-1], tok["dupe"])
 
-      if s[self.c] == "!":
-        self.c += 1
-        yield (s[self.c-1], tok["not"])
-      if s[self.c] == "&":
-        self.c += 1
-        yield (s[self.c-1], tok["ban"])
-      if s[self.c] == "|":
-        self.c += 1
-        yield (s[self.c-1], tok["bor"])
-      if s[self.c] == "^":
-        self.c += 1
-        yield (s[self.c-1], tok["bxr"])
+def process_bindings(tokens):
+    token_list = list(tokens)
+    identifiers = {}
+    processed_procedural_code = []
 
-      if s[self.c] == "~":
-        self.c += 1
-        yield (s[self.c-1], tok["bnt"])
-      if s[self.c] == "<":
-        self.c += 1
-        if s[self.c] == "<":
-          self.c += 1
-          yield(s[self.c-2] + s[self.c-1], tok["lsh"])
-        else:
-          yield (s[self.c-1], tok["larr"])
-      if s[self.c] == ">":
-        self.c += 1
-        if s[self.c] == ">":
-          self.c += 1
-          yield(s[self.c-2] + s[self.c-1], tok["rsh"])
-        else:
-          yield (s[self.c-1], tok["rarr"])
-      if s[self.c] == "(":
-        self.c += 1
-        yield (s[self.c-1], tok["lbra"])
-      if s[self.c] == ")":
-        self.c += 1
-        yield (s[self.c-1], tok["rbra"])
-      if s[self.c] == "[":
-        self.c += 1
-        yield (s[self.c-1], tok["lsqu"])
-      if s[self.c] == "]":
-        self.c += 1
-        yield (s[self.c-1], tok["rsqu"])
-      if s[self.c] == "{":
-        self.c += 1
-        yield (s[self.c-1], tok["rcur"])
-      if s[self.c] == "}":
-        self.c += 1
-        yield (s[self.c-1], tok["lcur"])
+    def _check_is_recursive(name, current_identifiers):
+        q = collections.deque()
+        q.append(name)
+        visited = {name}
+        
+        while q:
+            current_name = q.popleft()
+            body = current_identifiers.get(current_name, [])
+            for token in body:
+                if token.type != TokenType.ID:
+                    continue
+                
+                called_func = token.value
+                if called_func == name:
+                    return True
+                
+                if called_func not in visited:
+                    visited.add(called_func)
+                    q.append(called_func)
+        return False
 
-      if s[self.c] == "=":
-        self.c += 1
-        if s[self.c] == ">":
-          self.c += 1
-          yield (s[self.c-2] + s[self.c-1], tok["bnd"])
-        else:
-          yield (s[self.c-1], tok["equ"])
-      else:
-        while not s[self.c] in " \n+=*/<>(){}[],;:#!^&|" and self.c != len(s):
-          i += s[self.c]
-          self.c += 1
-        if i.isnumeric() or (i.replace(".", "").isnumeric() and i.count(".") == 1):
-          yield (i, tok["num"])
-        elif (i[0] == "\"" and i[-1] == "\"") or (i[0] == "\'" and i[-1] == "\'"):
-          yield (i, tok["str"])
-        else:
-          yield (i, tok["id"])
-        self.c += 1
-    except Exception as err:
-      print(f"Error on character: {self.c} => \n {err}")
-      raise
+    i = 0
+    while i < len(token_list):
+        line_end = i
+        while line_end < len(token_list) and token_list[line_end].type != TokenType.NL:
+            line_end += 1
+        line_tokens = token_list[i:line_end]
+        
+        is_definition = (len(line_tokens) >= 2 and 
+                         line_tokens[0].type == TokenType.ID and 
+                         line_tokens[1].type == TokenType.BND)
 
-tokenizer = Tokenizer()
-t = next(tokenizer.Next(), None)
-while t != ("eof", tok["eof"]):
-    tok_stream.append(t)
-    t = next(tokenizer.Next(), None)
-
-#inlines all bindings to make program easier to run
-class Inliner:
-  c = 0
-
-  identifiers = {}
-  call_tree = {}
-
-  def explore_call_tree(self, t):
-    #BFS always finds first loop
-    visited=[]
-    queue = []
-    for i in self.call_tree[t]:
-      queue.append(i)
-    while len(queue) > 0:
-      if t in queue:
-        return queue
-      else:
-        a = queue.pop()
-        if a not in self.call_tree:
-          pass
-        else:
-          for i in self.call_tree[a]:
-            queue.append(i)
-    return False
-
-  def Next(self):
-    try:
-      if tok_stream[self.c][1] == "id":
-        if self.c != len(tok_stream):
-          if tok_stream[self.c + 1][1] == "bnd":
-            root = tok_stream[self.c][0]
-            self.identifiers.update({root: None})
-            self.call_tree.update({root: []})
-            sub = []
-            temp = self.c + 2
-            while temp != len(tok_stream) and tok_stream[temp][1] != "nl":
-              if tok_stream[temp][1] == "id":
-                self.call_tree[root].append(tok_stream[temp][0])
-              
-              sub.append(tok_stream[temp])
-              temp += 1
-            if self.explore_call_tree(tok_stream[self.c][0]):
-              raise Exception(f"Error: function \"{root}\" is recursive")
-
-            self.identifiers.update({tok_stream[self.c][0]: sub})
-            del tok_stream[self.c:temp+1]
-            self.c = -1
-          else:
-            if tok_stream[self.c][0] in self.identifiers:
-              id = tok_stream[self.c][0]
-              for i in self.identifiers[id][::-1]:
-                tok_stream.insert(self.c, i)
-              self.c += len(self.identifiers[id])
-              del tok_stream[self.c]
-              self.c -= len(self.identifiers[id]) + 1
-      if self.c == len(tok_stream) - 1:
-        yield 0
-      else:
-        self.c += 1
-        yield 1
-                      
-    except Exception as err:
-      print(f"Error on token: {self.c} => \n {err}")
-      raise
-
-inliner = Inliner()
-i = 1
-while i != 0:
-  i = next(inliner.Next(), None)
-
-class ArrParser():
-  c = 0
-  shape = [[], []]
-  real_shape = []
-
-  def Next(self):
-    if tok_stream[self.c][1] == tok["rsqu"]:
-      tmp = self.c
-      level = 0
-      while tok_stream[tmp][1] == "rsqu":
-        level += 1
-        tmp += 1
-      if level == self.shape[0][0]:
-        ress = self.shape[1][self.shape[0].index(1)]
-        resf = tok_stream.index(("]", tok["rsqu"]), ress)
-        base = abs(ress - resf + 1)
-        self.real_shape.append(base)
-
-        for i in range(2, self.shape[0][0]+1):
-          self.real_shape.append(self.shape[0].count(i-1) // self.shape[0].count(i))
-
-        data = []
-        for i in range(self.shape[1][0], self.c):
-          if tok_stream[i][0] != "[" and tok_stream[i][0] != "]":
-                data.append(tok_stream[i][0])
-
-        del tok_stream[self.shape[1][0]: self.c + self.shape[0][0]]
-        tok_stream.insert(self.shape[1][0], (self.real_shape[::-1], data, tok["arr"]))
-
-        self.c = self.shape[1][0]
-        self.shape = [[],[]]
-        self.real_shape = []
-
-    if tok_stream[self.c][1] == tok["lsqu"]:
-      tmp = self.c
-      level = 0
-      while tok_stream[tmp][1] == tok["lsqu"]:
-        level += 1
-        tmp += 1
-      self.shape[0].append(level)
-      self.shape[1].append(self.c)
-    if self.c == len(tok_stream) - 1:
-      yield 0
-    else:
-      self.c += 1
-      yield 1
+        if is_definition:
+            name = line_tokens[0].value
+            body = line_tokens[2:]
+            identifiers[name] = body
+        elif line_tokens:
+            expanded = True
+            while expanded:
+                expanded = False
+                new_line = []
+                for token in line_tokens:
+                    if token.type == TokenType.ID and token.value in identifiers:
+                        if not _check_is_recursive(token.value, identifiers):
+                            new_line.extend(identifiers[token.value])
+                            expanded = True
+                        else:
+                            new_line.append(token)
+                    else:
+                        new_line.append(token)
+                line_tokens = new_line
             
-arrparser = ArrParser()
-i = 1
-while i != 0:
-  i = next(arrparser.Next(), None)
+            processed_procedural_code.extend(line_tokens)
 
-o_file = open(args.output, "w")
-for i in tok_stream:
-  o_file.write(str(i) + "\n")
-o_file.close()
+        if line_end < len(token_list):
+            processed_procedural_code.append(token_list[line_end])
+        i = line_end + 1
+
+    needed_ids = {token.value for token in processed_procedural_code if token.type == TokenType.ID}
+
+    defs_to_write = set()
+    if needed_ids:
+        q = collections.deque(list(needed_ids))
+        visited = set(needed_ids)
+        while q:
+            func_name = q.popleft()
+            defs_to_write.add(func_name)
+            for token in identifiers.get(func_name, []):
+                if token.type == TokenType.ID and token.value not in visited:
+                    visited.add(token.value)
+                    q.append(token.value)
+    
+    final_stream = []
+    
+    if defs_to_write:
+        final_stream.append(Token('__DEF_START__', TokenType.DEF_START))
+        final_stream.append(Token('\n', TokenType.NL))
+        
+        for name in sorted(list(defs_to_write)):
+            if name in identifiers:
+                final_stream.append(Token(name, TokenType.ID))
+                final_stream.append(Token('=>', TokenType.BND))
+                final_stream.extend(identifiers[name])
+                final_stream.append(Token('\n', TokenType.NL))
+
+        final_stream.append(Token('__DEF_END__', TokenType.DEF_END))
+        final_stream.append(Token('\n', TokenType.NL))
+
+    final_stream.extend(processed_procedural_code)
+
+    return final_stream            
+    
+class TokenIterator:
+    def __init__(self, tokens):
+        self._iterator = iter(tokens)
+        self._peeked = None
+
+    def peek(self):
+        if self._peeked is None:
+            try:
+                self._peeked = next(self._iterator)
+            except StopIteration:
+                return None
+        return self._peeked
+
+    def next(self):
+        if self._peeked is not None:
+            token = self._peeked
+            self._peeked = None
+            return token
+        try:
+            return next(self._iterator)
+        except StopIteration:
+            return None
+
+def parse_arrays(tokens):
+    def _parse_single_array(iterator):
+        contents = []
+        
+        while iterator.peek() and iterator.peek().type != TokenType.RSQU:
+            token = iterator.next()
+            
+            if token.type == TokenType.LSQU:
+                contents.append(_parse_single_array(iterator))
+            else:
+                contents.append(token)
+
+        closing_bracket = iterator.next()
+        if not closing_bracket or closing_bracket.type != TokenType.RSQU:
+            raise SyntaxError("Syntax Error: Mismatched brackets. Expected ']' but found EOF or other token.")
+
+        if not contents:
+            return Token(value=([0], []), type=TokenType.ARR)
+
+        is_nested_array = (contents[0].type == TokenType.ARR)
+        
+        for item in contents[1:]:
+            if (item.type == TokenType.ARR) != is_nested_array:
+                raise TypeError("Syntax Error: Inconsistent element types in array. Cannot mix literals and sub-arrays at the same level.")
+
+        if not is_nested_array:
+            shape = [len(contents)]
+            data = [item.value for item in contents]
+            return Token(value=(shape, data), type=TokenType.ARR)
+        else:
+            first_shape = contents[0].value[0]
+            for item in contents[1:]:
+                if item.value[0] != first_shape:
+                    raise TypeError(f"Syntax Error: Ragged arrays are not supported. Mismatched shapes: {first_shape} and {item.value[0]}")
+            
+            shape = [len(contents)] + first_shape
+            
+            data = []
+            for item in contents:
+                data.extend(item.value[1])
+            
+            return Token(value=(shape, data), type=TokenType.ARR)
+
+    iterator = TokenIterator(tokens)
+    
+    while True:
+        token = iterator.peek()
+        if not token or token.type == TokenType.EOF:
+            break
+
+        if token.type == TokenType.LSQU:
+            iterator.next()
+            yield _parse_single_array(iterator)
+        elif token.type == TokenType.RSQU:
+            raise SyntaxError("Syntax Error: Unexpected ']' at top level.")
+        else:
+            yield iterator.next()
+
+def remove_nl(token_stream):
+    if not token_stream:
+        return []
+
+    cleaned_stream = []
+    cleaned_stream.append(token_stream[0])
+
+    for i in range(1, len(token_stream)):
+        current_token = token_stream[i]
+        last_added_token = cleaned_stream[-1]
+
+        if not (current_token.type == TokenType.NL and last_added_token.type == TokenType.NL) and not (current_token.type == TokenType.NL and (last_added_token.type == TokenType.DEF_START or last_added_token.type == TokenType.DEF_END)):
+            cleaned_stream.append(current_token)
+            
+    return cleaned_stream
+
+def main():
+    parser = argparse.ArgumentParser(description="An efficient interpreter for a custom language.")
+    parser.add_argument("input", nargs='?', default="tests/features/array_parse.txt")
+    parser.add_argument("output", nargs='?', default="out.txt")
+    args = parser.parse_args()
+
+    print(f"Starting Processing. Input file is {args.input}")
+
+    try:
+        with open(args.input, "r") as i_file:
+            source = i_file.read()
+    except FileNotFoundError:
+        print(f"Error: Input file not found at '{args.input}'")
+        return
+
+    token_stream = tokenize(source)
+
+    processed_tokens = process_bindings(token_stream)
+
+    arrayed_tokens = list(parse_arrays(processed_tokens))
+    final_tokens = remove_nl(arrayed_tokens)
+
+    with open(args.output, "w") as o_file:
+        for token in final_tokens:
+            o_file.write(str(token) + "\n")
+    
+    print(f"Processing complete. Output written to {args.output}")
+
+
+if __name__ == "__main__":
+    main()

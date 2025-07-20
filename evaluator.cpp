@@ -37,11 +37,5 @@ int main(int argc, char** argv){
     }
 
     //Actual stack, contains pointers to other stacks in the order they appear in program, eg could point to int stack twice then fn stack causing evaluation of dyadic function.
-    stack<int> exec_stack {}; 
-
-    //Only store functions, strings and float arrays (arrays can be 1x1)
-    stack<std::string> fn_stack;
-    stack<std::string> str_stack;
-    stack<ndarray> val_stack;
     return 0;
 }
