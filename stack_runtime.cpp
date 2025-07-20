@@ -69,7 +69,7 @@ extern "C" {
     }
     
     // Memory management
-    void* malloc(size_t size) {
+    extern "C" void* runtime_malloc(size_t size) {
         return std::malloc(size);
     }
     

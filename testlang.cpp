@@ -1,3 +1,5 @@
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/IRBuilder.h>
@@ -12,11 +14,17 @@
 #include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/Support/TargetSelect.h>
-#include <llvm/IR/LegacyPassManager.h>
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar/Reassociate.h"
+#include "llvm/Transforms/Scalar/NewGVN.h"
+#include "llvm/Transforms/Scalar/SimplifyCFG.h"
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
-#include <llvm/Support/TargetRegistry.h>
+#include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/MC/TargetRegistry.h>
@@ -146,21 +154,24 @@ public:
                 auto sizeConstant = llvm::ConstantInt::get(int32Type, token.data.size());
                 
                 // Allocate array data
-                auto mallocFunc = module->getFunction("malloc");
+                auto mallocFunc = module->getFunction("runtime_malloc");
                 if (!mallocFunc) {
-                    auto mallocType = llvm::FunctionType::get(int8PtrType, {int32Type}, false);
+                    auto mallocType = llvm::FunctionType::get(int8PtrType, {llvm::Type::getInt64Ty(context)}, false);
                     mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
                 }
                 
-                auto dataSize = builder->CreateMul(sizeConstant, 
-                    llvm::ConstantInt::get(int32Type, sizeof(double)));
-                auto dataPtr = builder->CreateCall(mallocFunc, {dataSize});
+                auto dataSizeBytes = builder->CreateMul(
+                    builder->CreateZExt(sizeConstant, llvm::Type::getInt64Ty(context)), 
+                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sizeof(double))
+                );
+                auto dataPtr = builder->CreateCall(mallocFunc, {dataSizeBytes});
                 auto typedDataPtr = builder->CreateBitCast(dataPtr, doubleType->getPointerTo());
+                
                 
                 // Store array data
                 for (size_t i = 0; i < token.data.size(); ++i) {
                     auto idx = llvm::ConstantInt::get(int32Type, i);
-                    auto elemPtr = builder->CreateGEP(doubleType, typedDataPtr, {idx});
+                    auto elemPtr = builder->CreateGEP(doubleType, typedDataPtr, idx);
                     auto val = llvm::ConstantFP::get(doubleType, token.data[i]);
                     builder->CreateStore(val, elemPtr);
                 }
@@ -273,13 +284,16 @@ public:
         }
     }
     
+    // In StackLangCompiler class
     void compile(const std::vector<Token>& tokens) {
         auto mainFunc = createMainFunction();
         
         bool inDef = false;
         std::string currentDefName;
         std::vector<Token> currentDefBody;
+        std::vector<Token> proceduralTokens; // Collect procedural tokens here
         
+        // --- First Pass: Handle definitions and collect procedural tokens ---
         for (const auto& token : tokens) {
             if (token.type == TokenType::DEF_START) {
                 inDef = true;
@@ -290,13 +304,13 @@ public:
             }
             
             if (inDef) {
+                // This logic correctly handles function definitions
                 if (token.type == TokenType::ID && currentDefName.empty()) {
                     currentDefName = token.value;
                 } else if (token.type == TokenType::BND) {
-                    // Start of function body
                     currentDefBody.clear();
                 } else if (token.type == TokenType::NL && !currentDefName.empty()) {
-                    // End of function definition
+                    // The fix in createFunction will handle the reversal for the body
                     createFunction(currentDefName, currentDefBody);
                     currentDefName.clear();
                     currentDefBody.clear();
@@ -304,14 +318,42 @@ public:
                     currentDefBody.push_back(token);
                 }
             } else {
+                // Collect all non-definition tokens
+                proceduralTokens.push_back(token);
+            }
+        }
+        
+        // --- Second Pass: Compile procedural code line-by-line in reverse ---
+        std::vector<std::vector<Token>> proceduralLines;
+        if (!proceduralTokens.empty()) {
+            proceduralLines.emplace_back(); // Start the first line
+            for (const auto& token : proceduralTokens) {
+                if (token.type == TokenType::NL || token.type == TokenType::EOF_TOK) {
+                    // If the current line has tokens, start a new one
+                    if (!proceduralLines.back().empty()) {
+                        proceduralLines.emplace_back();
+                    }
+                } else {
+                    proceduralLines.back().push_back(token);
+                }
+            }
+        }
+
+        // Compile each line with its tokens reversed
+        for (auto& line : proceduralLines) {
+            if (line.empty()) continue;
+            
+            std::reverse(line.begin(), line.end());
+            for (const auto& token : line) {
                 compileToken(token);
             }
         }
         
-        // Return 0 from main
+        // Finish the main function
         builder->CreateRet(llvm::ConstantInt::get(int32Type, 0));
     }
     
+    // In StackLangCompiler class
     void createFunction(const std::string& name, const std::vector<Token>& body) {
         auto voidType = llvm::Type::getVoidTy(context);
         auto funcType = llvm::FunctionType::get(voidType, {}, false);
@@ -321,7 +363,11 @@ public:
         auto oldInsertPoint = builder->GetInsertBlock();
         builder->SetInsertPoint(entry);
         
-        for (const auto& token : body) {
+        // Reverse the body of the function before compiling
+        auto reversed_body = body;
+        std::reverse(reversed_body.begin(), reversed_body.end());
+        
+        for (const auto& token : reversed_body) {
             compileToken(token);
         }
         
@@ -348,40 +394,41 @@ public:
         llvm::InitializeAllTargetMCs();
         llvm::InitializeAllAsmParsers();
         llvm::InitializeAllAsmPrinters();
-
+    
         auto targetTriple = llvm::sys::getDefaultTargetTriple();
         module->setTargetTriple(targetTriple);
-
+    
         std::string error;
         auto target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
         if (!target) {
             std::cerr << "Error: " << error << std::endl;
             return;
         }
-
+    
         auto CPU = "generic";
         auto features = "";
         llvm::TargetOptions opt;
         auto relocModel = llvm::Reloc::PIC_;
         auto targetMachine = target->createTargetMachine(targetTriple, CPU, features, opt, relocModel);
-
+    
         module->setDataLayout(targetMachine->createDataLayout());
-
+    
         std::error_code EC;
         llvm::raw_fd_ostream dest(filename, EC, llvm::sys::fs::OF_None);
         if (EC) {
             std::cerr << "Could not open file: " << EC.message() << std::endl;
             return;
         }
-
+    
+        // Use the correct legacy pass manager
         llvm::legacy::PassManager pass;
         auto fileType = llvm::CodeGenFileType::CGFT_ObjectFile;
-
+    
         if (targetMachine->addPassesToEmitFile(pass, dest, nullptr, fileType)) {
             std::cerr << "TargetMachine can't emit a file of this type" << std::endl;
             return;
         }
-
+    
         pass.run(*module);
         dest.flush();
     }
@@ -392,12 +439,9 @@ public:
         generateObjectFile(objFile);
         
         // Link with runtime library
-        std::string linkCmd = "clang++ -o " + filename + " " + objFile;
+        std::string linkCmd = "clang++ -o " + filename + " " + objFile + " -Wl,--whole-archive " + runtimeLibPath + " -Wl,--no-whole-archive";
         if (!runtimeLibPath.empty()) {
             linkCmd += " " + runtimeLibPath;
-        } else {
-            // Link with built-in runtime
-            linkCmd += " -lm"; // Math library for basic ops
         }
         
         int result = std::system(linkCmd.c_str());
@@ -411,15 +455,36 @@ public:
     }
     
     void optimize() {
-        auto passManager = std::make_unique<llvm::legacy::FunctionPassManager>(module.get());
-        passManager->add(llvm::createInstructionCombiningPass());
-        passManager->add(llvm::createReassociatePass());
-        passManager->add(llvm::createGVNPass());
-        passManager->add(llvm::createCFGSimplificationPass());
-        passManager->doInitialization();
+        // Create the analysis managers
+        llvm::LoopAnalysisManager LAM;
+        llvm::FunctionAnalysisManager FAM;
+        llvm::CGSCCAnalysisManager CGAM;
+        llvm::ModuleAnalysisManager MAM;
+    
+        // Create the pass builder
+        llvm::PassBuilder PB;
+    
+        // Register all the analyses
+        PB.registerModuleAnalyses(MAM);
+        PB.registerCGSCCAnalyses(CGAM);
+        PB.registerFunctionAnalyses(FAM);
+        PB.registerLoopAnalyses(LAM);
+        PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    
+        // Create the function pass manager
+        llvm::FunctionPassManager FPM;
         
+        // Add optimization passes
+        FPM.addPass(llvm::InstCombinePass());
+        FPM.addPass(llvm::ReassociatePass());
+        FPM.addPass(llvm::NewGVNPass());
+        FPM.addPass(llvm::SimplifyCFGPass());
+    
+        // Run the passes on each function
         for (auto& func : *module) {
-            passManager->run(func);
+            if (!func.isDeclaration()) {
+                FPM.run(func, FAM);
+            }
         }
     }
     
@@ -427,6 +492,22 @@ public:
         return !llvm::verifyModule(*module, &llvm::errs());
     }
 };
+
+std::string trim_and_clean(const std::string& str) {
+    const std::string whitespace = " \t\n\r\f\v";
+    size_t first = str.find_first_not_of(whitespace);
+    if (std::string::npos == first) {
+        return str;
+    }
+    size_t last = str.find_last_not_of(whitespace);
+    std::string trimmed = str.substr(first, (last - first + 1));
+
+    if ((trimmed.front() == '\'' && trimmed.back() == '\'') ||
+        (trimmed.front() == '"' && trimmed.back() == '"')) {
+        return trimmed.substr(1, trimmed.length() - 2);
+    }
+    return trimmed;
+}
 
 // Token parser from Python output
 std::vector<Token> parseTokenFile(const std::string& filename) {
@@ -453,7 +534,7 @@ std::vector<Token> parseTokenFile(const std::string& filename) {
             std::string item;
             while (std::getline(ss, item, ',')) {
                 if (!item.empty()) {
-                    shape.push_back(std::stoi(item));
+                    shape.push_back(std::stoi(trim_and_clean(item)));
                 }
             }
             
@@ -461,7 +542,7 @@ std::vector<Token> parseTokenFile(const std::string& filename) {
             ss = std::stringstream(dataStr);
             while (std::getline(ss, item, ',')) {
                 if (!item.empty()) {
-                    data.push_back(std::stod(item));
+                    data.push_back(std::stod(trim_and_clean(item)));
                 }
             }
             
@@ -587,7 +668,7 @@ int main(int argc, char* argv[]) {
         compiler.generateObjectFile(outputFile + ".o");
         std::cout << "Object file generated: " << outputFile << ".o" << std::endl;
     } else if (outputMode == "--exe") {
-        compiler.generateExecutable(outputFile);
+        compiler.generateExecutable(outputFile, "./libstack_runtime.a");
         std::cout << "Executable generated: " << outputFile << std::endl;
     } else {
         std::cerr << "Unknown output mode: " << outputMode << std::endl;

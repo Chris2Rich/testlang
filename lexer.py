@@ -49,7 +49,7 @@ Token = collections.namedtuple('Token', ['value', 'type'])
 def tokenize(source_code):
     c = 0
     single_char_map = {
-        '\n': TokenType.NL, '+': TokenType.ADD, '-': TokenType.SUB, '*': TokenType.MUL,
+        '\n': TokenType.NL, '+': TokenType.ADD, '-': TokenType.SUB, '*': TokenType.MUL, '%': TokenType.MOD,
         ';': TokenType.POP, ':': TokenType.FLIP,
         '&': TokenType.BAN, '|': TokenType.BOR, '^': TokenType.BXR, '~': TokenType.BNT,
         '(': TokenType.LBRA, ')': TokenType.RBRA, '[': TokenType.LSQU, ']': TokenType.RSQU,
@@ -63,8 +63,16 @@ def tokenize(source_code):
             c += 1
             continue
 
-        if char == '/' and c + 1 < len(source_code) and source_code[c+1] == '/':
-            while c < len(source_code) and source_code[c] != '\n':
+        if char == '/':
+            if c + 1 < len(source_code):
+                if source_code[c+1] == '/':
+                    while c < len(source_code) and source_code[c] != '\n':
+                        c += 1
+                else:
+                    yield Token(char, TokenType.DIV)
+                    c += 1
+            else:
+                yield Token(char, TokenType.DIV)
                 c += 1
             continue
         
