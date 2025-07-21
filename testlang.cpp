@@ -1,3 +1,4 @@
+// Enhanced compiler with proper multidimensional array support
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/IR/LLVMContext.h>
@@ -50,12 +51,12 @@ enum class TokenType {
     RARR = 50, LARR = 51, RBRA = 52, LBRA = 53, RSQU = 54, LSQU = 55, RCUR = 56, LCUR = 57,
     DEF_START = 100, DEF_END = 101
 };
-
+// Enhanced Token structure to include full shape information
 struct Token {
     std::string value;
     TokenType type;
-    std::vector<int> shape;  // For arrays
-    std::vector<double> data; // For array data
+    std::vector<int> shape;    // Full multidimensional shape
+    std::vector<double> data;  // Flattened array data
     
     Token(const std::string& v, TokenType t) : value(v), type(t) {}
     Token(const std::string& v, TokenType t, const std::vector<int>& sh, const std::vector<double>& dt) 
@@ -64,25 +65,24 @@ struct Token {
 
 class StackLangCompiler {
 private:
-    llvm::LLVMContext context;
-    std::unique_ptr<llvm::Module> module;
-    std::unique_ptr<llvm::IRBuilder<>> builder;
-    
-    // Stack simulation for compile-time
+
     std::vector<llvm::Value*> compileTimeStack;
     
     // Runtime stack pointer and operations
     llvm::Value* stackPtr;
     llvm::Value* stackTop;
-    
-    // Function definitions
-    std::unordered_map<std::string, llvm::Function*> functions;
+    llvm::LLVMContext context;
+    std::unique_ptr<llvm::Module> module;
+    std::unique_ptr<llvm::IRBuilder<>> builder;
     
     // Types
     llvm::Type* doubleType;
     llvm::Type* int32Type;
     llvm::Type* int8PtrType;
-    llvm::StructType* arrayType;  // {i32 size, double* data}
+    llvm::Type* int64Type;
+    
+    // Function definitions
+    std::unordered_map<std::string, llvm::Function*> functions;
     
 public:
     StackLangCompiler() : builder(std::make_unique<llvm::IRBuilder<>>(context)) {
@@ -92,51 +92,81 @@ public:
         doubleType = llvm::Type::getDoubleTy(context);
         int32Type = llvm::Type::getInt32Ty(context);
         int8PtrType = llvm::Type::getInt8PtrTy(context);
-        
-        // Array type: {i32 size, double* data}
-        std::vector<llvm::Type*> arrayFields = {int32Type, doubleType->getPointerTo()};
-        arrayType = llvm::StructType::create(context, arrayFields, "Array");
+        int64Type = llvm::Type::getInt64Ty(context);
         
         setupRuntimeFunctions();
     }
     
     void setupRuntimeFunctions() {
-        // Stack operations
         auto voidType = llvm::Type::getVoidTy(context);
         
-        // void push_double(double val)
+        // CHANGE 1: Enhanced array functions
+        // Old: push_array_data(i32 size, double* data)
+        // New: push_multidim_array(i32 ndim, i32* shape, double* data)
+        auto pushMultidimType = llvm::FunctionType::get(
+            voidType, 
+            {int32Type, int32Type->getPointerTo(), doubleType->getPointerTo()}, 
+            false
+        );
+        llvm::Function::Create(pushMultidimType, llvm::Function::ExternalLinkage, 
+                              "push_multidim_array", module.get());
+        
+        // Keep old function for backwards compatibility with 1D arrays
+        auto pushArrayDataType = llvm::FunctionType::get(
+            voidType, 
+            {int32Type, doubleType->getPointerTo()}, 
+            false
+        );
+        llvm::Function::Create(pushArrayDataType, llvm::Function::ExternalLinkage, 
+                              "push_array_data", module.get());
+        
+        // CHANGE 2: Add matrix operations
+        auto matmulType = llvm::FunctionType::get(voidType, {}, false);
+        llvm::Function::Create(matmulType, llvm::Function::ExternalLinkage, 
+                              "matrix_multiply", module.get());
+        
+        // CHANGE 3: Add reshape operation
+        auto reshapeType = llvm::FunctionType::get(
+            voidType, 
+            {int32Type, int32Type->getPointerTo()}, 
+            false
+        );
+        llvm::Function::Create(reshapeType, llvm::Function::ExternalLinkage, 
+                              "reshape_top", module.get());
+        
+        // CHANGE 4: Add transpose operation
+        auto transposeType = llvm::FunctionType::get(voidType, {}, false);
+        llvm::Function::Create(transposeType, llvm::Function::ExternalLinkage, 
+                              "transpose_top", module.get());
+        
+        // Keep all existing functions (push_double, binary operations, etc.)
         auto pushDoubleType = llvm::FunctionType::get(voidType, {doubleType}, false);
-        llvm::Function::Create(pushDoubleType, llvm::Function::ExternalLinkage, "push_double", module.get());
+        llvm::Function::Create(pushDoubleType, llvm::Function::ExternalLinkage, 
+                              "push_double", module.get());
         
-        // double pop_double()
         auto popDoubleType = llvm::FunctionType::get(doubleType, {}, false);
-        llvm::Function::Create(popDoubleType, llvm::Function::ExternalLinkage, "pop_double", module.get());
+        llvm::Function::Create(popDoubleType, llvm::Function::ExternalLinkage, 
+                              "pop_double", module.get());
         
-        // void push_array(Array arr)
-        auto pushArrayType = llvm::FunctionType::get(voidType, {arrayType}, false);
-        llvm::Function::Create(pushArrayType, llvm::Function::ExternalLinkage, "push_array", module.get());
+        // Standard operations
+        auto simpleVoidType = llvm::FunctionType::get(voidType, {}, false);
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "do_add", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "do_sub", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "do_mul", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "do_div", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "do_mod", module.get());
         
-        // Array pop_array()
-        auto popArrayType = llvm::FunctionType::get(arrayType, {}, false);
-        llvm::Function::Create(popArrayType, llvm::Function::ExternalLinkage, "pop_array", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "do_neg", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "pop_and_print", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "duplicate_top", module.get());
+        llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage, "swap_top", module.get());
         
-        // void print_double(double val)
-        auto printDoubleType = llvm::FunctionType::get(voidType, {doubleType}, false);
-        llvm::Function::Create(printDoubleType, llvm::Function::ExternalLinkage, "print_double", module.get());
+        // Memory management
+        auto mallocType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
+        llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "runtime_malloc", module.get());
         
-        // void print_array(Array arr)
-        auto printArrayType = llvm::FunctionType::get(voidType, {arrayType}, false);
-        llvm::Function::Create(printArrayType, llvm::Function::ExternalLinkage, "print_array", module.get());
-    }
-    
-    llvm::Function* createMainFunction() {
-        auto mainType = llvm::FunctionType::get(int32Type, {}, false);
-        auto mainFunc = llvm::Function::Create(mainType, llvm::Function::ExternalLinkage, "main", module.get());
-        
-        auto entry = llvm::BasicBlock::Create(context, "entry", mainFunc);
-        builder->SetInsertPoint(entry);
-        
-        return mainFunc;
+        auto freeType = llvm::FunctionType::get(voidType, {int8PtrType}, false);
+        llvm::Function::Create(freeType, llvm::Function::ExternalLinkage, "runtime_free", module.get());
     }
     
     void compileToken(const Token& token) {
@@ -150,25 +180,26 @@ public:
             }
             
             case TokenType::ARR: {
-                // Create array constant
-                auto sizeConstant = llvm::ConstantInt::get(int32Type, token.data.size());
-                
-                // Allocate array data
-                auto mallocFunc = module->getFunction("runtime_malloc");
-                if (!mallocFunc) {
-                    auto mallocType = llvm::FunctionType::get(int8PtrType, {llvm::Type::getInt64Ty(context)}, false);
-                    mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module.get());
+                // CHANGE 5: Enhanced array compilation with shape information
+                if (token.shape.empty()) {
+                    std::cerr << "Warning: Array token has no shape information" << std::endl;
+                    break;
                 }
                 
-                auto dataSizeBytes = builder->CreateMul(
-                    builder->CreateZExt(sizeConstant, llvm::Type::getInt64Ty(context)), 
-                    llvm::ConstantInt::get(llvm::Type::getInt64Ty(context), sizeof(double))
+                // Determine if we need multidimensional or 1D handling
+                bool is_multidim = token.shape.size() > 1 || 
+                                  (token.shape.size() == 1 && token.shape[0] != token.data.size());
+                
+                // Allocate memory for array data
+                auto mallocFunc = module->getFunction("runtime_malloc");
+                auto dataSizeBytes = llvm::ConstantInt::get(
+                    int64Type, 
+                    sizeof(double) * token.data.size()
                 );
                 auto dataPtr = builder->CreateCall(mallocFunc, {dataSizeBytes});
                 auto typedDataPtr = builder->CreateBitCast(dataPtr, doubleType->getPointerTo());
                 
-                
-                // Store array data
+                // Store array elements
                 for (size_t i = 0; i < token.data.size(); ++i) {
                     auto idx = llvm::ConstantInt::get(int32Type, i);
                     auto elemPtr = builder->CreateGEP(doubleType, typedDataPtr, idx);
@@ -176,106 +207,122 @@ public:
                     builder->CreateStore(val, elemPtr);
                 }
                 
-                // Create array struct
-                auto arrayAlloca = builder->CreateAlloca(arrayType);
-                auto sizePtr = builder->CreateStructGEP(arrayType, arrayAlloca, 0);
-                auto dataPtrPtr = builder->CreateStructGEP(arrayType, arrayAlloca, 1);
-                
-                builder->CreateStore(sizeConstant, sizePtr);
-                builder->CreateStore(typedDataPtr, dataPtrPtr);
-                
-                auto arrayVal = builder->CreateLoad(arrayType, arrayAlloca);
-                auto pushFunc = module->getFunction("push_array");
-                builder->CreateCall(pushFunc, {arrayVal});
+                if (is_multidim) {
+                    // Use multidimensional array function
+                    
+                    // Allocate memory for shape array
+                    auto shapeSizeBytes = llvm::ConstantInt::get(
+                        int64Type, 
+                        sizeof(int32_t) * token.shape.size()
+                    );
+                    auto shapePtr = builder->CreateCall(mallocFunc, {shapeSizeBytes});
+                    auto typedShapePtr = builder->CreateBitCast(shapePtr, int32Type->getPointerTo());
+                    
+                    // Store shape dimensions
+                    for (size_t i = 0; i < token.shape.size(); ++i) {
+                        auto idx = llvm::ConstantInt::get(int32Type, i);
+                        auto shapeElemPtr = builder->CreateGEP(int32Type, typedShapePtr, idx);
+                        auto shapeVal = llvm::ConstantInt::get(int32Type, token.shape[i]);
+                        builder->CreateStore(shapeVal, shapeElemPtr);
+                    }
+                    
+                    // Call push_multidim_array
+                    auto ndimConstant = llvm::ConstantInt::get(int32Type, token.shape.size());
+                    auto pushMultidimFunc = module->getFunction("push_multidim_array");
+                    builder->CreateCall(pushMultidimFunc, {ndimConstant, typedShapePtr, typedDataPtr});
+                    
+                    // Clean up shape array
+                    auto freeFunc = module->getFunction("runtime_free");
+                    builder->CreateCall(freeFunc, {shapePtr});
+                } else {
+                    // Use simple 1D array function
+                    auto sizeConstant = llvm::ConstantInt::get(int32Type, token.data.size());
+                    auto pushArrayFunc = module->getFunction("push_array_data");
+                    builder->CreateCall(pushArrayFunc, {sizeConstant, typedDataPtr});
+                }
                 break;
             }
             
+            // CHANGE 6: Add new operations for multidimensional arrays
+            case TokenType::MUL: {
+                // Check if this should be matrix multiplication (could be context-dependent)
+                // For now, keep as element-wise multiplication
+                auto mulFunc = module->getFunction("do_mul");
+                builder->CreateCall(mulFunc, {});
+                break;
+            }
+            
+            // All other operations remain the same...
             case TokenType::ADD: {
-                auto popFunc = module->getFunction("pop_double");
-                auto pushFunc = module->getFunction("push_double");
-                
-                auto b = builder->CreateCall(popFunc, {});
-                auto a = builder->CreateCall(popFunc, {});
-                auto result = builder->CreateFAdd(a, b);
-                builder->CreateCall(pushFunc, {result});
+                auto addFunc = module->getFunction("do_add");
+                builder->CreateCall(addFunc, {});
                 break;
             }
             
             case TokenType::SUB: {
-                auto popFunc = module->getFunction("pop_double");
-                auto pushFunc = module->getFunction("push_double");
-                
-                auto b = builder->CreateCall(popFunc, {});
-                auto a = builder->CreateCall(popFunc, {});
-                auto result = builder->CreateFSub(a, b);
-                builder->CreateCall(pushFunc, {result});
-                break;
-            }
-            
-            case TokenType::MUL: {
-                auto popFunc = module->getFunction("pop_double");
-                auto pushFunc = module->getFunction("push_double");
-                
-                auto b = builder->CreateCall(popFunc, {});
-                auto a = builder->CreateCall(popFunc, {});
-                auto result = builder->CreateFMul(a, b);
-                builder->CreateCall(pushFunc, {result});
+                auto subFunc = module->getFunction("do_sub");
+                builder->CreateCall(subFunc, {});
                 break;
             }
             
             case TokenType::DIV: {
-                auto popFunc = module->getFunction("pop_double");
-                auto pushFunc = module->getFunction("push_double");
-                
-                auto b = builder->CreateCall(popFunc, {});
-                auto a = builder->CreateCall(popFunc, {});
-                auto result = builder->CreateFDiv(a, b);
-                builder->CreateCall(pushFunc, {result});
+                auto divFunc = module->getFunction("do_div");
+                builder->CreateCall(divFunc, {});
+                break;
+            }
+            
+            case TokenType::MOD: {
+                auto modFunc = module->getFunction("do_mod");
+                builder->CreateCall(modFunc, {});
+                break;
+            }
+            
+            case TokenType::NOT: {
+                auto negFunc = module->getFunction("do_neg");
+                builder->CreateCall(negFunc, {});
                 break;
             }
             
             case TokenType::DUPE: {
-                auto popFunc = module->getFunction("pop_double");
-                auto pushFunc = module->getFunction("push_double");
-                
-                auto val = builder->CreateCall(popFunc, {});
-                builder->CreateCall(pushFunc, {val});
-                builder->CreateCall(pushFunc, {val});
-                break;
-            }
-            
-            case TokenType::POP: {
-                auto popFunc = module->getFunction("pop_double");
-                auto printFunc = module->getFunction("print_double");
-                
-                auto val = builder->CreateCall(popFunc, {});
-                builder->CreateCall(printFunc, {val});
+                auto dupeFunc = module->getFunction("duplicate_top");
+                builder->CreateCall(dupeFunc, {});
                 break;
             }
             
             case TokenType::FLIP: {
-                auto popFunc = module->getFunction("pop_double");
-                auto pushFunc = module->getFunction("push_double");
-                
-                auto b = builder->CreateCall(popFunc, {});
-                auto a = builder->CreateCall(popFunc, {});
-                builder->CreateCall(pushFunc, {b});
-                builder->CreateCall(pushFunc, {a});
+                auto flipFunc = module->getFunction("swap_top");
+                builder->CreateCall(flipFunc, {});
+                break;
+            }
+            
+            case TokenType::POP: {
+                auto printFunc = module->getFunction("pop_and_print");
+                builder->CreateCall(printFunc, {});
                 break;
             }
             
             case TokenType::ID: {
-                // Function call
-                auto func = functions.find(token.value);
-                if (func != functions.end()) {
-                    builder->CreateCall(func->second, {});
+                // CHANGE 7: Add support for new matrix operations
+                if (token.value == "matmul" || token.value == "@") {
+                    auto matmulFunc = module->getFunction("matrix_multiply");
+                    builder->CreateCall(matmulFunc, {});
+                } else if (token.value == "transpose" || token.value == "T") {
+                    auto transposeFunc = module->getFunction("transpose_top");
+                    builder->CreateCall(transposeFunc, {});
+                } else {
+                    // Regular function call
+                    auto func = functions.find(token.value);
+                    if (func != functions.end()) {
+                        builder->CreateCall(func->second, {});
+                    } else {
+                        std::cerr << "Warning: Undefined function: " << token.value << std::endl;
+                    }
                 }
                 break;
             }
             
             case TokenType::NL:
             case TokenType::EOF_TOK:
-                // Skip these
                 break;
                 
             default:
@@ -284,16 +331,53 @@ public:
         }
     }
     
-    // In StackLangCompiler class
+    // CHANGE 8: Add helper function to create reshape operations
+    void addReshapeOperation(const std::vector<int>& newShape) {
+        auto mallocFunc = module->getFunction("runtime_malloc");
+        auto shapeSizeBytes = llvm::ConstantInt::get(
+            int64Type, 
+            sizeof(int32_t) * newShape.size()
+        );
+        auto shapePtr = builder->CreateCall(mallocFunc, {shapeSizeBytes});
+        auto typedShapePtr = builder->CreateBitCast(shapePtr, int32Type->getPointerTo());
+        
+        // Store new shape
+        for (size_t i = 0; i < newShape.size(); ++i) {
+            auto idx = llvm::ConstantInt::get(int32Type, i);
+            auto shapeElemPtr = builder->CreateGEP(int32Type, typedShapePtr, idx);
+            auto shapeVal = llvm::ConstantInt::get(int32Type, newShape[i]);
+            builder->CreateStore(shapeVal, shapeElemPtr);
+        }
+        
+        auto ndimConstant = llvm::ConstantInt::get(int32Type, newShape.size());
+        auto reshapeFunc = module->getFunction("reshape_top");
+        builder->CreateCall(reshapeFunc, {ndimConstant, typedShapePtr});
+        
+        // Clean up
+        auto freeFunc = module->getFunction("runtime_free");
+        builder->CreateCall(freeFunc, {shapePtr});
+    }
+    
+    // Rest of the class remains the same...
+    llvm::Function* createMainFunction() {
+        auto mainType = llvm::FunctionType::get(int32Type, {}, false);
+        auto mainFunc = llvm::Function::Create(mainType, llvm::Function::ExternalLinkage, "main", module.get());
+        
+        auto entry = llvm::BasicBlock::Create(context, "entry", mainFunc);
+        builder->SetInsertPoint(entry);
+        
+        return mainFunc;
+    }
+    
     void compile(const std::vector<Token>& tokens) {
         auto mainFunc = createMainFunction();
         
         bool inDef = false;
         std::string currentDefName;
         std::vector<Token> currentDefBody;
-        std::vector<Token> proceduralTokens; // Collect procedural tokens here
+        std::vector<Token> proceduralTokens;
         
-        // --- First Pass: Handle definitions and collect procedural tokens ---
+        // First Pass: Handle definitions and collect procedural tokens
         for (const auto& token : tokens) {
             if (token.type == TokenType::DEF_START) {
                 inDef = true;
@@ -304,13 +388,11 @@ public:
             }
             
             if (inDef) {
-                // This logic correctly handles function definitions
                 if (token.type == TokenType::ID && currentDefName.empty()) {
                     currentDefName = token.value;
                 } else if (token.type == TokenType::BND) {
                     currentDefBody.clear();
                 } else if (token.type == TokenType::NL && !currentDefName.empty()) {
-                    // The fix in createFunction will handle the reversal for the body
                     createFunction(currentDefName, currentDefBody);
                     currentDefName.clear();
                     currentDefBody.clear();
@@ -318,18 +400,16 @@ public:
                     currentDefBody.push_back(token);
                 }
             } else {
-                // Collect all non-definition tokens
                 proceduralTokens.push_back(token);
             }
         }
         
-        // --- Second Pass: Compile procedural code line-by-line in reverse ---
+        // Second Pass: Compile procedural code
         std::vector<std::vector<Token>> proceduralLines;
         if (!proceduralTokens.empty()) {
-            proceduralLines.emplace_back(); // Start the first line
+            proceduralLines.emplace_back();
             for (const auto& token : proceduralTokens) {
                 if (token.type == TokenType::NL || token.type == TokenType::EOF_TOK) {
-                    // If the current line has tokens, start a new one
                     if (!proceduralLines.back().empty()) {
                         proceduralLines.emplace_back();
                     }
@@ -339,7 +419,6 @@ public:
             }
         }
 
-        // Compile each line with its tokens reversed
         for (auto& line : proceduralLines) {
             if (line.empty()) continue;
             
@@ -349,11 +428,9 @@ public:
             }
         }
         
-        // Finish the main function
         builder->CreateRet(llvm::ConstantInt::get(int32Type, 0));
     }
     
-    // In StackLangCompiler class
     void createFunction(const std::string& name, const std::vector<Token>& body) {
         auto voidType = llvm::Type::getVoidTy(context);
         auto funcType = llvm::FunctionType::get(voidType, {}, false);
@@ -363,7 +440,6 @@ public:
         auto oldInsertPoint = builder->GetInsertBlock();
         builder->SetInsertPoint(entry);
         
-        // Reverse the body of the function before compiling
         auto reversed_body = body;
         std::reverse(reversed_body.begin(), reversed_body.end());
         
@@ -377,6 +453,7 @@ public:
         functions[name] = func;
     }
     
+    // All other methods remain the same (generateLLVMIR, generateObjectFile, etc.)
     void generateLLVMIR(const std::string& filename) {
         std::error_code EC;
         llvm::raw_fd_ostream file(filename, EC);
@@ -386,7 +463,7 @@ public:
         }
         module->print(file, nullptr);
     }
-    
+
     void generateObjectFile(const std::string& filename) {
         // Initialize target
         llvm::InitializeAllTargetInfos();
@@ -509,12 +586,13 @@ std::string trim_and_clean(const std::string& str) {
     return trimmed;
 }
 
-// Token parser from Python output
+// CHANGE 9: Enhanced token parser to handle multidimensional shape information
 std::vector<Token> parseTokenFile(const std::string& filename) {
     std::vector<Token> tokens;
     std::ifstream file(filename);
     std::string line;
     
+    // Enhanced regex to capture full shape information
     std::regex tokenRegex(R"(Token\(value='([^']*)', type=<TokenType\.(\w+): \d+>\))");
     std::regex arrayRegex(R"(Token\(value=\(\[([^\]]*)\], \[([^\]]*)\]\), type=<TokenType\.ARR: 3>\))");
     
@@ -522,7 +600,6 @@ std::vector<Token> parseTokenFile(const std::string& filename) {
         std::smatch match;
         
         if (std::regex_match(line, match, arrayRegex)) {
-            // Parse array token
             std::string shapeStr = match[1].str();
             std::string dataStr = match[2].str();
             
@@ -534,7 +611,10 @@ std::vector<Token> parseTokenFile(const std::string& filename) {
             std::string item;
             while (std::getline(ss, item, ',')) {
                 if (!item.empty()) {
-                    shape.push_back(std::stoi(trim_and_clean(item)));
+                    std::string trimmed = trim_and_clean(item);
+                    if (!trimmed.empty()) {
+                        shape.push_back(std::stoi(trimmed));
+                    }
                 }
             }
             
@@ -542,7 +622,10 @@ std::vector<Token> parseTokenFile(const std::string& filename) {
             ss = std::stringstream(dataStr);
             while (std::getline(ss, item, ',')) {
                 if (!item.empty()) {
-                    data.push_back(std::stod(trim_and_clean(item)));
+                    std::string trimmed = trim_and_clean(item);
+                    if (!trimmed.empty()) {
+                        data.push_back(std::stod(trimmed));
+                    }
                 }
             }
             
@@ -552,6 +635,7 @@ std::vector<Token> parseTokenFile(const std::string& filename) {
             std::string typeStr = match[2].str();
             
             TokenType type = TokenType::EOF_TOK;
+            // Map token types...
             if (typeStr == "NUM") type = TokenType::NUM;
             else if (typeStr == "ID") type = TokenType::ID;
             else if (typeStr == "ADD") type = TokenType::ADD;
