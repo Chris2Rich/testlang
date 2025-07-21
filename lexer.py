@@ -99,6 +99,7 @@ def tokenize(source_code):
                         c += 1
                     value = source_code[start:c]
                     yield Token(value, TokenType.NUM)
+                    continue
             else:
                 yield Token(char, TokenType.SUB)
                 c += 1

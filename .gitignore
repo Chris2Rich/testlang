@@ -1,2 +1,5 @@
 .vscode
-tests/speed
+.o
+.ll
+out.txt
+[^.]*
