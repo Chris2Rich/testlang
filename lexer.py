@@ -49,7 +49,7 @@ Token = collections.namedtuple('Token', ['value', 'type'])
 def tokenize(source_code):
     c = 0
     single_char_map = {
-        '\n': TokenType.NL, '+': TokenType.ADD, '-': TokenType.SUB, '*': TokenType.MUL, '%': TokenType.MOD,
+        '\n': TokenType.NL, '+': TokenType.ADD, '*': TokenType.MUL, '%': TokenType.MOD,
         ';': TokenType.POP, ':': TokenType.FLIP,
         '&': TokenType.BAN, '|': TokenType.BOR, '^': TokenType.BXR, '~': TokenType.BNT,
         '(': TokenType.LBRA, ')': TokenType.RBRA, '[': TokenType.LSQU, ']': TokenType.RSQU,
@@ -75,12 +75,35 @@ def tokenize(source_code):
                 yield Token(char, TokenType.DIV)
                 c += 1
             continue
-        
+
         if char in single_char_map:
             yield Token(char, single_char_map[char])
             c += 1
             continue
         
+        if char == '-':
+            if c + 1 < len(source_code):
+                if not source_code[c + 1].isdigit():
+                    yield Token(char, TokenType.SUB)
+                    c += 1
+                    continue
+                else:
+                    start = c
+                    has_dot = False
+                    has_sub = False
+                    while c < len(source_code) and (source_code[c].isdigit() or (source_code[c] == '.' and not has_dot) or (source_code[c] == "-" and not has_sub)):
+                        if source_code[c] == '.':
+                            has_dot = True
+                        if source_code[c] == '-':
+                            has_sub = True
+                        c += 1
+                    value = source_code[start:c]
+                    yield Token(value, TokenType.NUM)
+            else:
+                yield Token(char, TokenType.SUB)
+                c += 1
+                continue
+
         if char == '<':
             if c + 1 < len(source_code) and source_code[c+1] == '<':
                 yield Token("<<", TokenType.LSH)
