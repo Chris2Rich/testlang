@@ -1,3 +1,5 @@
 .vscode
-.o
-.ll
+*.o
+*.ll
+*.a
+out.txt
