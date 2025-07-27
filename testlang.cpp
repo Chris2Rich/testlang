@@ -303,10 +303,10 @@ public:
             
             case TokenType::ID: {
                 // CHANGE 7: Add support for new matrix operations
-                if (token.value == "matmul" || token.value == "@") {
+                if (token.value == "matmul") {
                     auto matmulFunc = module->getFunction("matrix_multiply");
                     builder->CreateCall(matmulFunc, {});
-                } else if (token.value == "transpose" || token.value == "T") {
+                } else if (token.value == "transpose") {
                     auto transposeFunc = module->getFunction("transpose_top");
                     builder->CreateCall(transposeFunc, {});
                 } else {

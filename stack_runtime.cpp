@@ -287,11 +287,13 @@ extern "C" {
     void sub_op(double a, double b, double* result) { *result = a - b; }
     void mul_op(double a, double b, double* result) { *result = a * b; }
     void div_op(double a, double b, double* result) { *result = a / b; }
+    void mod_op(double a, double b, double* result) { *result = a % b; }
     
     void do_add() { binary_op(add_op); }
     void do_sub() { binary_op(sub_op); }
     void do_mul() { binary_op(mul_op); }
     void do_div() { binary_op(div_op); }
+    void do_mod() { binary_op(mod_op); }
     
     // Other utility functions remain the same...
     void duplicate_top() {
