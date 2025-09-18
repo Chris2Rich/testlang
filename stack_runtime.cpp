@@ -1,357 +1,472 @@
-#include <iostream>
-#include <stack>
-#include <vector>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
-#include <numeric>
+#include <iostream>
 #include <math.h>
+#include <numeric>
+#include <stack>
+#include <vector>
 
 struct Value {
-    bool is_array;
-    std::vector<int> shape;    double* data;    int total_size;    
-    Value(double val) : is_array(false), shape(), total_size(1) {
-        data = (double*)malloc(sizeof(double));
-        data[0] = val;
+  bool is_array;
+  std::vector<long> shape;
+  double *data;
+  long total_size;
+  Value(double val) : is_array(false), shape(), total_size(1) {
+    data = (double *)malloc(sizeof(double));
+    data[0] = val;
+  }
+
+  Value(const std::vector<long> &sh, double *arr_data)
+      : is_array(true), shape(sh) {
+    total_size =
+        std::accumulate(sh.begin(), sh.end(), 1, std::multiplies<long>());
+    data = (double *)malloc(sizeof(double) * total_size);
+    memcpy(data, arr_data, sizeof(double) * total_size);
+  }
+
+  Value(const Value &other)
+      : is_array(other.is_array), shape(other.shape),
+        total_size(other.total_size) {
+    data = (double *)malloc(sizeof(double) * total_size);
+    memcpy(data, other.data, sizeof(double) * total_size);
+  }
+
+  ~Value() {
+    if (data)
+      free(data);
+  }
+
+  long to_flat_index(const std::vector<long> &indices) const {
+    if (indices.size() != shape.size())
+      return 0;
+
+    long flat_idx = 0;
+    long stride = 1;
+    for (long i = shape.size() - 1; i >= 0; --i) {
+      flat_idx += indices[i] * stride;
+      stride *= shape[i];
     }
-    
-    Value(const std::vector<int>& sh, double* arr_data) 
-        : is_array(true), shape(sh) {
-        total_size = std::accumulate(sh.begin(), sh.end(), 1, std::multiplies<int>());
-        data = (double*)malloc(sizeof(double) * total_size);
-        memcpy(data, arr_data, sizeof(double) * total_size);
+    return flat_idx;
+  }
+
+  double get_element(long flat_index) const {
+    if (is_array) {
+      return data[flat_index % total_size];
+    } else {
+      return data[0];
     }
-    
-    Value(const Value& other) 
-        : is_array(other.is_array), shape(other.shape), total_size(other.total_size) {
-        data = (double*)malloc(sizeof(double) * total_size);
-        memcpy(data, other.data, sizeof(double) * total_size);
+  }
+
+  static bool are_broadcastable(const std::vector<long> &shape1,
+                                const std::vector<long> &shape2) {
+    long max_dims = std::max(shape1.size(), shape2.size());
+    std::vector<long> padded_shape1(max_dims, 1), padded_shape2(max_dims, 1);
+
+    std::copy(shape1.rbegin(), shape1.rend(), padded_shape1.rbegin());
+    std::copy(shape2.rbegin(), shape2.rend(), padded_shape2.rbegin());
+
+    for (long i = 0; i < max_dims; ++i) {
+      long dim1 = padded_shape1[i];
+      long dim2 = padded_shape2[i];
+      if (dim1 != dim2 && dim1 != 1 && dim2 != 1) {
+        return false;
+      }
     }
-    
-    ~Value() {
-        if (data) free(data);
+    return true;
+  }
+
+  static std::vector<long> broadcast_shape(const std::vector<long> &shape1,
+                                           const std::vector<long> &shape2) {
+    long max_dims = std::max(shape1.size(), shape2.size());
+    std::vector<long> padded_shape1(max_dims, 1), padded_shape2(max_dims, 1);
+
+    std::copy(shape1.rbegin(), shape1.rend(), padded_shape1.rbegin());
+    std::copy(shape2.rbegin(), shape2.rend(), padded_shape2.rbegin());
+
+    std::vector<long> result_shape(max_dims);
+    for (long i = 0; i < max_dims; ++i) {
+      long dim1 = padded_shape1[i];
+      long dim2 = padded_shape2[i];
+      if (dim1 == 1 || dim2 == 1) {
+        result_shape[i] = std::max(dim1, dim2);
+      } else if (dim1 == dim2) {
+        result_shape[i] = dim1;
+      } else {
+        throw;
+      }
     }
-    
-    int to_flat_index(const std::vector<int>& indices) const {
-        if (indices.size() != shape.size()) return 0;
-        
-        int flat_idx = 0;
-        int stride = 1;
-        for (int i = shape.size() - 1; i >= 0; --i) {
-            flat_idx += indices[i] * stride;
-            stride *= shape[i];
+    return result_shape;
+  }
+
+  void print(std::ostream &os) const {
+    if (!is_array) {
+      os << data[0];
+      return;
+    }
+
+    if (shape.size() == 1) {
+      os << "[";
+      for (long i = 0; i < shape[0]; ++i) {
+        if (i > 0)
+          os << ", ";
+        os << data[i];
+      }
+      os << "]";
+    } else if (shape.size() == 2) {
+      os << "[" << std::endl;
+      for (long i = 0; i < shape[0]; ++i) {
+        os << "  [";
+        for (long j = 0; j < shape[1]; ++j) {
+          if (j > 0)
+            os << ", ";
+          os << data[i * shape[1] + j];
         }
-        return flat_idx;
+        os << "]";
+        if (i < shape[0] - 1)
+          os << ",";
+        os << std::endl;
+      }
+      os << "]";
+    } else {
+      os << "Array(shape=[";
+      for (size_t i = 0; i < shape.size(); ++i) {
+        if (i > 0)
+          os << ", ";
+        os << shape[i];
+      }
+      os << "], data=[";
+      for (long i = 0; i < std::min(long(10), total_size); ++i) {
+        if (i > 0)
+          os << ", ";
+        os << data[i];
+      }
+      if (total_size > 10)
+        os << ", ...";
+      os << "])";
     }
-    
-    double get_element(int flat_index) const {
-        if (is_array) {
-            return data[flat_index % total_size];        } else {
-            return data[0];        }
-    }
-    
-    static bool are_broadcastable(const std::vector<int>& shape1, const std::vector<int>& shape2) {
-        int max_dims = std::max(shape1.size(), shape2.size());
-        
-        for (int i = 0; i < max_dims; ++i) {
-            int dim1 = (i < shape1.size()) ? shape1[shape1.size() - 1 - i] : 1;
-            int dim2 = (i < shape2.size()) ? shape2[shape2.size() - 1 - i] : 1;
-            
-            if (dim1 != dim2 && dim1 != 1 && dim2 != 1) {
-                return false;
-            }
-        }
-        return true;
-    }
-    
-    static std::vector<int> broadcast_shape(const std::vector<int>& shape1, const std::vector<int>& shape2) {
-        int max_dims = std::max(shape1.size(), shape2.size());
-        std::vector<int> result(max_dims);
-        
-        for (int i = 0; i < max_dims; ++i) {
-            int dim1 = (i < shape1.size()) ? shape1[shape1.size() - 1 - i] : 1;
-            int dim2 = (i < shape2.size()) ? shape2[shape2.size() - 1 - i] : 1;
-            result[max_dims - 1 - i] = std::max(dim1, dim2);
-        }
-        return result;
-    }
-    
-    void print(std::ostream& os) const {
-        if (!is_array) {
-            os << data[0];
-            return;
-        }
-        
-        if (shape.size() == 1) {
-            os << "[";
-            for (int i = 0; i < shape[0]; ++i) {
-                if (i > 0) os << ", ";
-                os << data[i];
-            }
-            os << "]";
-        } else if (shape.size() == 2) {
-            os << "[" << std::endl;
-            for (int i = 0; i < shape[0]; ++i) {
-                os << "  [";
-                for (int j = 0; j < shape[1]; ++j) {
-                    if (j > 0) os << ", ";
-                    os << data[i * shape[1] + j];
-                }
-                os << "]";
-                if (i < shape[0] - 1) os << ",";
-                os << std::endl;
-            }
-            os << "]";
-        } else {
-            os << "Array(shape=[";
-            for (size_t i = 0; i < shape.size(); ++i) {
-                if (i > 0) os << ", ";
-                os << shape[i];
-            }
-            os << "], data=[";
-            for (int i = 0; i < std::min(10, total_size); ++i) {
-                if (i > 0) os << ", ";
-                os << data[i];
-            }
-            if (total_size > 10) os << ", ...";
-            os << "])";
-        }
-    }
+  }
 };
 
-static std::stack<Value*> valueStack;
+static std::stack<Value *> valueStack;
 
 extern "C" {
-    void push_double(double val) {
-        valueStack.push(new Value(val));
-    }
-    
-    void push_array_data(int size, double* data) {
-        std::vector<int> shape = {size};        valueStack.push(new Value(shape, data));
-    }
-    
-    void push_multidim_array(int ndim, int* shape_data, double* data) {
-        std::vector<int> shape(shape_data, shape_data + ndim);
-        valueStack.push(new Value(shape, data));
-    }
-    
-    void unary_op(void (*operation)(double, double*)) {
-        if (valueStack.size() < 1) {
-            std::cerr << "Runtime Error: Not enough values for unary operation" << std::endl;
-            return;
-        }
-        
-        Value* a = valueStack.top(); valueStack.pop();
-        
-        if (!a->is_array) {
-            double result;
-            operation(a->data[0], &result);
-            valueStack.push(new Value(result));
-        } else {
-            std::vector<int> result_shape = a->shape;
-            
-            int result_size = std::accumulate(result_shape.begin(), result_shape.end(), 1, std::multiplies<int>());
-            double* result_data = (double*)malloc(sizeof(double) * result_size);
-            
-            for (int i = 0; i < result_size; ++i) {
-                operation(a->get_element(i), &result_data[i]);
-            }
-            
-            if (result_size == 1) {
-                valueStack.push(new Value(result_data[0]));
-                free(result_data);
-            } else {
-                valueStack.push(new Value(result_shape, result_data));
-                free(result_data);
-            }
-        }
-        
-        delete a;
+void push_double(double val) { valueStack.push(new Value(val)); }
+
+void push_array_data(long size, double *data) {
+  std::vector<long> shape = {size};
+  valueStack.push(new Value(shape, data));
+}
+
+void push_multidim_array(long ndim, long *shape_data, double *data) {
+  std::vector<long> shape(shape_data, shape_data + ndim);
+  valueStack.push(new Value(shape, data));
+}
+
+void unary_op(void (*operation)(double, double *)) {
+  if (valueStack.size() < 1) {
+    std::cerr << "Runtime Error: Not enough values for unary operation"
+              << std::endl;
+    return;
+  }
+
+  Value *a = valueStack.top();
+  valueStack.pop();
+
+  if (!a->is_array) {
+    double result;
+    operation(a->data[0], &result);
+    valueStack.push(new Value(result));
+  } else {
+    std::vector<long> result_shape = a->shape;
+
+    long result_size = std::accumulate(result_shape.begin(), result_shape.end(),
+                                       1, std::multiplies<long>());
+    double *result_data = (double *)malloc(sizeof(double) * result_size);
+
+    for (long i = 0; i < result_size; ++i) {
+      operation(a->get_element(i), &result_data[i]);
     }
 
-    void binary_op(void (*operation)(double, double, double*)) {
-        if (valueStack.size() < 2) {
-            std::cerr << "Runtime Error: Not enough values for binary operation" << std::endl;
-            return;
-        }
-        
-        Value* b = valueStack.top(); valueStack.pop();
-        Value* a = valueStack.top(); valueStack.pop();
-        
-        if (!a->is_array && !b->is_array) {
-            double result;
-            operation(a->data[0], b->data[0], &result);
-            valueStack.push(new Value(result));
-        } else {
-            std::vector<int> a_shape = a->is_array ? a->shape : std::vector<int>{1};
-            std::vector<int> b_shape = b->is_array ? b->shape : std::vector<int>{1};
-            
-            if (!Value::are_broadcastable(a_shape, b_shape)) {
-                std::cerr << "Runtime Error: Shapes not broadcastable" << std::endl;
-                delete a; delete b;
-                return;
-            }
-            
-            std::vector<int> result_shape = Value::broadcast_shape(a_shape, b_shape);
-            int result_size = std::accumulate(result_shape.begin(), result_shape.end(), 1, std::multiplies<int>());
-            double* result_data = (double*)malloc(sizeof(double) * result_size);
-            
-            for (int i = 0; i < result_size; ++i) {
-                int a_idx = i % a->total_size;
-                int b_idx = i % b->total_size;
-                operation(a->get_element(a_idx), b->get_element(b_idx), &result_data[i]);
-            }
-            
-            if (result_size == 1) {
-                valueStack.push(new Value(result_data[0]));
-                free(result_data);
-            } else {
-                valueStack.push(new Value(result_shape, result_data));
-                free(result_data);
-            }
-        }
-        
-        delete a; delete b;
+    if (result_size == 1) {
+      valueStack.push(new Value(result_data[0]));
+      free(result_data);
+    } else {
+      valueStack.push(new Value(result_shape, result_data));
+      free(result_data);
+    }
+  }
+
+  delete a;
+}
+
+void binary_op(void (*operation)(double, double, double *)) {
+  if (valueStack.size() < 2) {
+    std::cerr << "Runtime Error: Not enough values for binary operation"
+              << std::endl;
+    return;
+  }
+
+  Value *b = valueStack.top();
+  valueStack.pop();
+  Value *a = valueStack.top();
+  valueStack.pop();
+
+  if (!a->is_array && !b->is_array) {
+    double result;
+    operation(a->data[0], b->data[0], &result);
+    valueStack.push(new Value(result));
+  } else {
+    std::vector<long> a_shape = a->is_array ? a->shape : std::vector<long>{1};
+    std::vector<long> b_shape = b->is_array ? b->shape : std::vector<long>{1};
+
+    if (!Value::are_broadcastable(a_shape, b_shape)) {
+      std::cerr << "Runtime Error: Shapes not broadcastable" << std::endl;
+      delete a;
+      delete b;
+      return;
     }
 
-    void push_pi(){
-        push_double(2*asin(1));
+    std::vector<long> result_shape = Value::broadcast_shape(a_shape, b_shape);
+    long result_size = std::accumulate(result_shape.begin(), result_shape.end(),
+                                       1, std::multiplies<long>());
+    double *result_data = (double *)malloc(sizeof(double) * result_size);
+
+    for (long i = 0; i < result_size; ++i) {
+      long a_idx = i % a->total_size;
+      long b_idx = i % b->total_size;
+      operation(a->get_element(a_idx), b->get_element(b_idx), &result_data[i]);
     }
 
-    void push_e(){
-        push_double(exp(1));
+    if (result_size == 1) {
+      valueStack.push(new Value(result_data[0]));
+      free(result_data);
+    } else {
+      valueStack.push(new Value(result_shape, result_data));
+      free(result_data);
     }
-    
-    void matrix_multiply() {
-        if (valueStack.size() < 2) {
-            std::cerr << "Runtime Error: Not enough values for matrix multiplication" << std::endl;
-            return;
-        }
-        
-        Value* b = valueStack.top(); valueStack.pop();
-        Value* a = valueStack.top(); valueStack.pop();
-        
-        if (!a->is_array || !b->is_array || 
-            a->shape.size() != 2 || b->shape.size() != 2 ||
-            a->shape[1] != b->shape[0]) {
-            std::cerr << "Runtime Error: Invalid shapes for matrix multiplication" << std::endl;
-            delete a; delete b;
-            return;
-        }
-        
-        int m = a->shape[0];
-        int n = a->shape[1];
-        int p = b->shape[1];
-        
-        std::vector<int> result_shape = {m, p};
-        double* result_data = (double*)malloc(sizeof(double) * m * p);
-        
-        for (int i = 0; i < m; ++i) {
-            for (int j = 0; j < p; ++j) {
-                double sum = 0.0;
-                for (int k = 0; k < n; ++k) {
-                    sum += a->data[i * n + k] * b->data[k * p + j];
-                }
-                result_data[i * p + j] = sum;
-            }
-        }
-        
-        valueStack.push(new Value(result_shape, result_data));
-        free(result_data);
-        delete a; delete b;
-    }
-    
-    void reshape_top(int ndim, int* new_shape) {
-        if (valueStack.empty()) return;
-        
-        Value* val = valueStack.top();
-        valueStack.pop();
-        
-        std::vector<int> shape(new_shape, new_shape + ndim);
-        int new_size = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<int>());
-        
-        if (new_size != val->total_size) {
-            std::cerr << "Runtime Error: Cannot reshape array with different total size" << std::endl;
-            valueStack.push(val);
-            return;
-        }
-        
-        Value* reshaped = new Value(shape, val->data);
-        delete val;
-        valueStack.push(reshaped);
-    }
-    
-    void pop_and_print() {
-        if (valueStack.empty()) {
-            std::cout << "Stack empty" << std::endl;
-            return;
-        }
-        
-        Value* val = valueStack.top();
-        valueStack.pop();
-        
-        val->print(std::cout);
-        std::cout << std::endl;
-        
-        delete val;
-    }
-    
-    void add_op(double a, double b, double* result) { *result = a + b; }
-    void sub_op(double a, double b, double* result) { *result = a - b; }
-    void mul_op(double a, double b, double* result) { *result = a * b; }
-    void div_op(double a, double b, double* result) { *result = a / b; }
-    void mod_op(double a, double b, double* result) { *result = fmod(a,b); }
+  }
 
-    void pow_op(double a, double b, double* result) { *result = pow(a, b);}
-    void log_op(double a, double b, double* result) { *result = log(a) / log(b);}
-    void exp_op(double a, double* result) { *result = exp(a);}
-    void ln_op(double a, double* result) { *result = log(a);}
+  delete a;
+  delete b;
+}
 
-    void sin_op(double a, double* result) { *result = sin(a);}
-    void cos_op(double a, double* result) { *result = cos(a);}
-    void tan_op(double a, double* result) { *result = tan(a);}
+void push_pi() { push_double(2 * asin(1)); }
 
-    void asin_op(double a, double* result) { *result = asin(a);}
-    void acos_op(double a, double* result) { *result = acos(a);}
-    void atan_op(double a, double* result) { *result = atan(a);}
-    
-    void do_add() { binary_op(add_op); }
-    void do_sub() { binary_op(sub_op); }
-    void do_mul() { binary_op(mul_op); }
-    void do_div() { binary_op(div_op); }
-    void do_mod() { binary_op(mod_op); }
-    void do_pow() { binary_op(pow_op); }
-    void do_log() { binary_op(log_op); }
-    void do_exp() { unary_op(exp_op); }
-    void do_ln() { unary_op(ln_op); }
+void push_e() { push_double(exp(1)); }
 
-    void do_sin() { unary_op(sin_op); }
-    void do_cos() { unary_op(cos_op); }
-    void do_tan() { unary_op(tan_op); }
-    
-    void do_asin() { unary_op(asin_op); }
-    void do_acos() { unary_op(acos_op); }
-    void do_atan() { unary_op(atan_op); }
-    
-    void duplicate_top() {
-        if (valueStack.empty()) return;
-        Value* val = valueStack.top();
-        valueStack.push(new Value(*val));
+void matrix_multiply() {
+  if (valueStack.size() < 2) {
+    std::cerr << "Runtime Error: Not enough values for matrix multiplication"
+              << std::endl;
+    return;
+  }
+
+  Value *b = valueStack.top();
+  valueStack.pop();
+  Value *a = valueStack.top();
+  valueStack.pop();
+
+  if (!a->is_array || !b->is_array || a->shape.size() != 2 ||
+      b->shape.size() != 2 || a->shape[1] != b->shape[0]) {
+    std::cerr << "Runtime Error: Invalid shapes for matrix multiplication"
+              << std::endl;
+    delete a;
+    delete b;
+    return;
+  }
+
+  long m = a->shape[0];
+  long n = a->shape[1];
+  long p = b->shape[1];
+
+  std::vector<long> result_shape = {m, p};
+  double *result_data = (double *)malloc(sizeof(double) * m * p);
+
+  for (long i = 0; i < m; ++i) {
+    for (long j = 0; j < p; ++j) {
+      double sum = 0.0;
+      for (long k = 0; k < n; ++k) {
+        sum += a->data[i * n + k] * b->data[k * p + j];
+      }
+      result_data[i * p + j] = sum;
     }
-    
-    void swap_top() {
-        if (valueStack.size() < 2) return;
-        Value* a = valueStack.top(); valueStack.pop();
-        Value* b = valueStack.top(); valueStack.pop();
-        valueStack.push(a);
-        valueStack.push(b);
-    }
+  }
 
-    void* runtime_malloc(size_t size) {
-        return std::malloc(size);
-    }
+  valueStack.push(new Value(result_shape, result_data));
+  free(result_data);
+  delete a;
+  delete b;
+}
 
-    void runtime_free(void* ptr) {
-        std::free(ptr);
+void expand_top() {
+  if (valueStack.size() < 2)
+    return;
+
+  Value *a = valueStack.top();
+  valueStack.pop();
+  Value *b = valueStack.top();
+  valueStack.pop();
+
+  if (!a->is_array || !b->is_array) {
+    valueStack.push(b);
+    valueStack.push(a);
+    return;
+  }
+
+  const std::vector<long> &a_shape = a->shape;
+  const std::vector<long> &b_shape = b->shape;
+
+  std::vector<long> expanded_shape = a_shape;
+  expanded_shape.insert(expanded_shape.end(), b_shape.begin(), b_shape.end());
+
+  long a_size = a->total_size;
+  long b_size = b->total_size;
+  long final_size = a_size * b_size;
+
+  double *a_expanded_data = (double *)malloc(sizeof(double) * final_size);
+  for (long i = 0; i < a_size; ++i) {
+    for (long j = 0; j < b_size; ++j) {
+      a_expanded_data[i * b_size + j] = a->data[i];
     }
+  }
+
+  double *b_expanded_data = (double *)malloc(sizeof(double) * final_size);
+  for (long i = 0; i < a_size; ++i) {
+    for (long j = 0; j < b_size; ++j) {
+      b_expanded_data[i * b_size + j] = b->data[j];
+    }
+  }
+
+  valueStack.push(new Value(expanded_shape, b_expanded_data));
+  valueStack.push(new Value(expanded_shape, a_expanded_data));
+
+  delete a;
+  delete b;
+  free(a_expanded_data);
+  free(b_expanded_data);
+}
+
+void reshape_top(long ndim, long *new_shape) {
+  if (valueStack.empty())
+    return;
+
+  Value *val = valueStack.top();
+  valueStack.pop();
+
+  std::vector<long> shape(new_shape, new_shape + ndim);
+  long new_size =
+      std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<long>());
+
+  if (new_size != val->total_size) {
+    std::cerr << "Runtime Error: Cannot reshape array with different total size"
+              << std::endl;
+    valueStack.push(val);
+    return;
+  }
+
+  Value *reshaped = new Value(shape, val->data);
+  delete val;
+  valueStack.push(reshaped);
+}
+
+void pop_and_print() {
+  if (valueStack.empty()) {
+    std::cout << "Stack empty" << std::endl;
+    return;
+  }
+
+  Value *val = valueStack.top();
+  valueStack.pop();
+
+  val->print(std::cout);
+  std::cout << std::endl;
+
+  delete val;
+}
+
+void band_op(double a, double b, double *result) {
+  *result = double(long(a) & long(b));
+}
+void bor_op(double a, double b, double *result) {
+  *result = double(long(a) | long(b));
+}
+void bxor_op(double a, double b, double *result) {
+  *result = double(long(a) ^ long(b));
+}
+void bnot_op(double a, double *result) { *result = double(~long(a)); }
+
+void lshift_op(double a, double b, double *result) {
+  *result = double(long(a) << long(b));
+}
+void rshift_op(double a, double b, double *result) {
+  *result = double(long(a) >> long(b));
+}
+
+void add_op(double a, double b, double *result) { *result = a + b; }
+void sub_op(double a, double b, double *result) { *result = a - b; }
+void mul_op(double a, double b, double *result) { *result = a * b; }
+void div_op(double a, double b, double *result) { *result = a / b; }
+void mod_op(double a, double b, double *result) { *result = fmod(a, b); }
+
+void pow_op(double a, double b, double *result) { *result = pow(a, b); }
+void log_op(double a, double b, double *result) { *result = log(a) / log(b); }
+void exp_op(double a, double *result) { *result = exp(a); }
+void ln_op(double a, double *result) { *result = log(a); }
+
+void sin_op(double a, double *result) { *result = sin(a); }
+void cos_op(double a, double *result) { *result = cos(a); }
+void tan_op(double a, double *result) { *result = tan(a); }
+
+void asin_op(double a, double *result) { *result = asin(a); }
+void acos_op(double a, double *result) { *result = acos(a); }
+void atan_op(double a, double *result) { *result = atan(a); }
+
+void do_band() { binary_op(band_op); }
+void do_bor() { binary_op(bor_op); }
+void do_bxor() { binary_op(bxor_op); }
+void do_bnot() { unary_op(bnot_op); }
+
+void do_lshift() { binary_op(lshift_op); }
+void do_rshift() { binary_op(rshift_op); }
+
+void do_add() { binary_op(add_op); }
+void do_sub() { binary_op(sub_op); }
+void do_mul() { binary_op(mul_op); }
+void do_div() { binary_op(div_op); }
+void do_mod() { binary_op(mod_op); }
+void do_pow() { binary_op(pow_op); }
+void do_log() { binary_op(log_op); }
+void do_exp() { unary_op(exp_op); }
+void do_ln() { unary_op(ln_op); }
+
+void do_sin() { unary_op(sin_op); }
+void do_cos() { unary_op(cos_op); }
+void do_tan() { unary_op(tan_op); }
+
+void do_asin() { unary_op(asin_op); }
+void do_acos() { unary_op(acos_op); }
+void do_atan() { unary_op(atan_op); }
+
+void duplicate_top() {
+  if (valueStack.empty())
+    return;
+  Value *val = valueStack.top();
+  valueStack.push(new Value(*val));
+}
+
+void swap_top() {
+  if (valueStack.size() < 2)
+    return;
+  Value *a = valueStack.top();
+  valueStack.pop();
+  Value *b = valueStack.top();
+  valueStack.pop();
+  valueStack.push(a);
+  valueStack.push(b);
+}
+
+void *runtime_malloc(size_t size) { return std::malloc(size); }
+
+void runtime_free(void *ptr) { std::free(ptr); }
 }

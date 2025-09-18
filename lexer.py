@@ -10,6 +10,7 @@ class TokenType(Enum):
     NUM = 4
     BND = 5
     NL = 6
+    EXP = 7
 
     POP = 10
     FLIP = 11
@@ -50,7 +51,7 @@ def tokenize(source_code):
     c = 0
     single_char_map = {
         '\n': TokenType.NL, '+': TokenType.ADD, '*': TokenType.MUL, '%': TokenType.MOD,
-        ';': TokenType.POP, ':': TokenType.FLIP,
+        '@': TokenType.EXP, ';': TokenType.POP, ':': TokenType.FLIP, '.': TokenType.DUPE,
         '&': TokenType.BAN, '|': TokenType.BOR, '^': TokenType.BXR, '~': TokenType.BNT,
         '(': TokenType.LBRA, ')': TokenType.RBRA, '[': TokenType.LSQU, ']': TokenType.RSQU,
         '{': TokenType.LCUR, '}': TokenType.RCUR,

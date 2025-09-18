@@ -2,4 +2,4 @@
 *.o
 *.ll
 *.a
-out.txt
+out*.txt
