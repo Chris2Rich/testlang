@@ -61,14 +61,11 @@ struct Value {
   static bool are_broadcastable(const std::vector<long> &shape1,
                                 const std::vector<long> &shape2) {
     long max_dims = std::max(shape1.size(), shape2.size());
-    std::vector<long> padded_shape1(max_dims, 1), padded_shape2(max_dims, 1);
-
-    std::copy(shape1.rbegin(), shape1.rend(), padded_shape1.rbegin());
-    std::copy(shape2.rbegin(), shape2.rend(), padded_shape2.rbegin());
 
     for (long i = 0; i < max_dims; ++i) {
-      long dim1 = padded_shape1[i];
-      long dim2 = padded_shape2[i];
+      long dim1 = (i < shape1.size()) ? shape1[shape1.size() - 1 - i] : 1;
+      long dim2 = (i < shape2.size()) ? shape2[shape2.size() - 1 - i] : 1;
+
       if (dim1 != dim2 && dim1 != 1 && dim2 != 1) {
         return false;
       }
@@ -79,24 +76,14 @@ struct Value {
   static std::vector<long> broadcast_shape(const std::vector<long> &shape1,
                                            const std::vector<long> &shape2) {
     long max_dims = std::max(shape1.size(), shape2.size());
-    std::vector<long> padded_shape1(max_dims, 1), padded_shape2(max_dims, 1);
+    std::vector<long> result(max_dims);
 
-    std::copy(shape1.rbegin(), shape1.rend(), padded_shape1.rbegin());
-    std::copy(shape2.rbegin(), shape2.rend(), padded_shape2.rbegin());
-
-    std::vector<long> result_shape(max_dims);
     for (long i = 0; i < max_dims; ++i) {
-      long dim1 = padded_shape1[i];
-      long dim2 = padded_shape2[i];
-      if (dim1 == 1 || dim2 == 1) {
-        result_shape[i] = std::max(dim1, dim2);
-      } else if (dim1 == dim2) {
-        result_shape[i] = dim1;
-      } else {
-        throw;
-      }
+      long dim1 = (i < shape1.size()) ? shape1[shape1.size() - 1 - i] : 1;
+      long dim2 = (i < shape2.size()) ? shape2[shape2.size() - 1 - i] : 1;
+      result[max_dims - 1 - i] = std::max(dim1, dim2);
     }
-    return result_shape;
+    return result;
   }
 
   void print(std::ostream &os) const {
@@ -161,6 +148,20 @@ void push_array_data(long size, double *data) {
 void push_multidim_array(long ndim, long *shape_data, double *data) {
   std::vector<long> shape(shape_data, shape_data + ndim);
   valueStack.push(new Value(shape, data));
+}
+
+void push_shape() {
+  if (valueStack.empty()) {
+    return;
+  }
+  Value *a = valueStack.top();
+  std::vector<double> data(a->shape.size());
+  std::transform(a->shape.data(), a->shape.data() + a->shape.size(),
+                 data.begin(),
+                 [](long val) { return static_cast<double>(val); });
+  std::vector<long> sh = {long(a->shape.size())};
+  valueStack.push(new Value(sh, data.data()));
+  delete a;
 }
 
 void unary_op(void (*operation)(double, double *)) {

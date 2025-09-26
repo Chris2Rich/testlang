@@ -157,6 +157,9 @@ public:
 
     auto simpleVoidType = llvm::FunctionType::get(voidType, {}, false);
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
+                           "push_shape", module.get());
+    
+    llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_band", module.get());
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_bor", module.get());
@@ -396,6 +399,9 @@ public:
       if (token.value == "matmul") {
         auto matmulFunc = module->getFunction("matrix_multiply");
         builder->CreateCall(matmulFunc, {});
+      } else if (token.value == "shape") {
+        auto shapeFunc = module->getFunction("push_shape");
+        builder->CreateCall(shapeFunc, {});
       } else if (token.value == "pow") {
         auto powFunc = module->getFunction("do_pow");
         builder->CreateCall(powFunc, {});
