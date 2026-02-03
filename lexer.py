@@ -311,7 +311,12 @@ def parse_arrays(tokens):
 
         if not is_nested_array:
             shape = [len(contents)]
-            data = [item.value for item in contents]
+            data = []
+            for item in contents:
+                if item.type == TokenType.NUM:
+                    data.append(float(item.value))
+                else:
+                    raise TypeError("Syntax Error: Array elements must be numeric")
             return Token(value=(shape, data), type=TokenType.ARR)
         else:
             first_shape = contents[0].value[0]

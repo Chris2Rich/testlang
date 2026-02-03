@@ -155,12 +155,24 @@ void push_shape() {
     return;
   }
   Value *a = valueStack.top();
-  std::vector<double> data(a->shape.size());
-  std::transform(a->shape.data(), a->shape.data() + a->shape.size(),
-                 data.begin(),
-                 [](long val) { return static_cast<double>(val); });
-  std::vector<long> sh = {long(a->shape.size())};
-  valueStack.push(new Value(sh, data.data()));
+  valueStack.pop();
+
+  if (!a->is_array) {
+    // Scalar has empty shape - represented as an empty array
+    // Here we push an array of shape [0] which means it has 0 elements
+    // and is 1-dimensional? No, shape of scalar is usually empty.
+    // If we want to return the shape as an array, for a scalar it's an empty array.
+    std::vector<long> sh = {0};
+    valueStack.push(new Value(sh, nullptr));
+  } else {
+    // Return an array containing the dimensions of 'a'
+    std::vector<double> dim_data(a->shape.size());
+    for (size_t i = 0; i < a->shape.size(); ++i) {
+      dim_data[i] = static_cast<double>(a->shape[i]);
+    }
+    std::vector<long> result_shape = {static_cast<long>(a->shape.size())};
+    valueStack.push(new Value(result_shape, dim_data.data()));
+  }
   delete a;
 }
 
@@ -218,8 +230,8 @@ void binary_op(void (*operation)(double, double, double *)) {
     operation(a->data[0], b->data[0], &result);
     valueStack.push(new Value(result));
   } else {
-    std::vector<long> a_shape = a->is_array ? a->shape : std::vector<long>{1};
-    std::vector<long> b_shape = b->is_array ? b->shape : std::vector<long>{1};
+    std::vector<long> a_shape = a->is_array ? a->shape : std::vector<long>{};
+    std::vector<long> b_shape = b->is_array ? b->shape : std::vector<long>{};
 
     if (!Value::are_broadcastable(a_shape, b_shape)) {
       std::cerr << "Runtime Error: Shapes not broadcastable" << std::endl;
@@ -234,8 +246,38 @@ void binary_op(void (*operation)(double, double, double *)) {
     double *result_data = (double *)malloc(sizeof(double) * result_size);
 
     for (long i = 0; i < result_size; ++i) {
-      long a_idx = i % a->total_size;
-      long b_idx = i % b->total_size;
+      // Convert flat index to multi-dimensional indices for result shape
+      std::vector<long> indices(result_shape.size());
+      long temp = i;
+      for (long j = result_shape.size() - 1; j >= 0; --j) {
+        indices[j] = temp % result_shape[j];
+        temp /= result_shape[j];
+      }
+
+      // Calculate index for a
+      long a_idx = 0;
+      if (a->is_array) {
+        std::vector<long> a_indices(a_shape.size());
+        long a_offset = result_shape.size() - a_shape.size();
+        for (long j = 0; j < a_shape.size(); ++j) {
+          long idx = j + a_offset;
+          a_indices[j] = indices[idx] % a_shape[j];
+        }
+        a_idx = a->to_flat_index(a_indices);
+      }
+
+      // Calculate index for b
+      long b_idx = 0;
+      if (b->is_array) {
+        std::vector<long> b_indices(b_shape.size());
+        long b_offset = result_shape.size() - b_shape.size();
+        for (long j = 0; j < b_shape.size(); ++j) {
+          long idx = j + b_offset;
+          b_indices[j] = indices[idx] % b_shape[j];
+        }
+        b_idx = b->to_flat_index(b_indices);
+      }
+
       operation(a->get_element(a_idx), b->get_element(b_idx), &result_data[i]);
     }
 
@@ -465,6 +507,46 @@ void swap_top() {
   valueStack.pop();
   valueStack.push(a);
   valueStack.push(b);
+}
+
+void transpose_top() {
+  if (valueStack.empty())
+    return;
+
+  Value *val = valueStack.top();
+  valueStack.pop();
+
+  if (!val->is_array) {
+    valueStack.push(val);
+    return;
+  }
+
+  std::vector<long> transposed_shape(val->shape.rbegin(), val->shape.rend());
+  long total_size = val->total_size;
+  double *transposed_data = (double *)malloc(sizeof(double) * total_size);
+
+  for (long i = 0; i < total_size; ++i) {
+    std::vector<long> indices(val->shape.size());
+    long temp = i;
+    for (long j = val->shape.size() - 1; j >= 0; --j) {
+      indices[j] = temp % val->shape[j];
+      temp /= val->shape[j];
+    }
+
+    std::reverse(indices.begin(), indices.end());
+    long transposed_idx = 0;
+    long stride = 1;
+    for (long j = transposed_shape.size() - 1; j >= 0; --j) {
+      transposed_idx += indices[j] * stride;
+      stride *= transposed_shape[j];
+    }
+
+    transposed_data[transposed_idx] = val->data[i];
+  }
+
+  valueStack.push(new Value(transposed_shape, transposed_data));
+  free(transposed_data);
+  delete val;
 }
 
 void *runtime_malloc(size_t size) { return std::malloc(size); }

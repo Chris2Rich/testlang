@@ -122,13 +122,13 @@ public:
 
     auto pushMultidimType = llvm::FunctionType::get(
         voidType,
-        {int32Type, int32Type->getPointerTo(), doubleType->getPointerTo()},
+        {int64Type, int64Type->getPointerTo(), doubleType->getPointerTo()},
         false);
     llvm::Function::Create(pushMultidimType, llvm::Function::ExternalLinkage,
                            "push_multidim_array", module.get());
 
     auto pushArrayDataType = llvm::FunctionType::get(
-        voidType, {int32Type, doubleType->getPointerTo()}, false);
+        voidType, {int64Type, doubleType->getPointerTo()}, false);
     llvm::Function::Create(pushArrayDataType, llvm::Function::ExternalLinkage,
                            "push_array_data", module.get());
 
@@ -137,7 +137,7 @@ public:
                            "matrix_multiply", module.get());
 
     auto reshapeType = llvm::FunctionType::get(
-        voidType, {int32Type, int32Type->getPointerTo()}, false);
+        voidType, {int64Type, int64Type->getPointerTo()}, false);
 
     llvm::Function::Create(reshapeType, llvm::Function::ExternalLinkage,
                            "reshape_top", module.get());
@@ -270,20 +270,20 @@ public:
       if (is_multidim) {
 
         auto shapeSizeBytes = llvm::ConstantInt::get(
-            int64Type, sizeof(int32_t) * token.shape.size());
+            int64Type, sizeof(long) * token.shape.size());
         auto shapePtr = builder->CreateCall(mallocFunc, {shapeSizeBytes});
         auto typedShapePtr =
-            builder->CreateBitCast(shapePtr, int32Type->getPointerTo());
+            builder->CreateBitCast(shapePtr, int64Type->getPointerTo());
 
         for (size_t i = 0; i < token.shape.size(); ++i) {
           auto idx = llvm::ConstantInt::get(int32Type, i);
-          auto shapeElemPtr = builder->CreateGEP(int32Type, typedShapePtr, idx);
-          auto shapeVal = llvm::ConstantInt::get(int32Type, token.shape[i]);
+          auto shapeElemPtr = builder->CreateGEP(int64Type, typedShapePtr, idx);
+          auto shapeVal = llvm::ConstantInt::get(int64Type, token.shape[i]);
           builder->CreateStore(shapeVal, shapeElemPtr);
         }
 
         auto ndimConstant =
-            llvm::ConstantInt::get(int32Type, token.shape.size());
+            llvm::ConstantInt::get(int64Type, token.shape.size());
         auto pushMultidimFunc = module->getFunction("push_multidim_array");
         builder->CreateCall(pushMultidimFunc,
                             {ndimConstant, typedShapePtr, typedDataPtr});
@@ -292,7 +292,7 @@ public:
         builder->CreateCall(freeFunc, {shapePtr});
       } else {
         auto sizeConstant =
-            llvm::ConstantInt::get(int32Type, token.data.size());
+            llvm::ConstantInt::get(int64Type, token.data.size());
         auto pushArrayFunc = module->getFunction("push_array_data");
         builder->CreateCall(pushArrayFunc, {sizeConstant, typedDataPtr});
       }
