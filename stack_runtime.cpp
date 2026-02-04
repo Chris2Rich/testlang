@@ -491,6 +491,74 @@ void do_asin() { unary_op(asin_op); }
 void do_acos() { unary_op(acos_op); }
 void do_atan() { unary_op(atan_op); }
 
+void do_iota() {
+  if (valueStack.size() < 2) {
+    std::cerr << "Runtime Error: iota requires 2 arguments (shape and filler)" << std::endl;
+    return;
+  }
+
+  // In RTL language, if user writes `; iota shape filler`
+  // Stack has shape then filler. filler is top.
+  Value *shapeArray = valueStack.top();
+  valueStack.pop();
+  Value *filler = valueStack.top();
+  valueStack.pop();
+
+  if (!shapeArray->is_array) {
+    std::cerr << "Runtime Error: iota requires an array for the target shape" << std::endl;
+    delete filler;
+    delete shapeArray;
+    return;
+  }
+
+  std::vector<long> target_shape;
+  for (long i = 0; i < shapeArray->total_size; ++i) {
+    target_shape.push_back(static_cast<long>(shapeArray->data[i]));
+  }
+
+  std::vector<long> filler_shape = filler->is_array ? filler->shape : std::vector<long>{};
+
+  if (!Value::are_broadcastable(filler_shape, target_shape)) {
+    std::cerr << "Runtime Error: Filler not broadcastable to target shape" << std::endl;
+    delete filler;
+    delete shapeArray;
+    return;
+  }
+
+  long result_size = std::accumulate(target_shape.begin(), target_shape.end(),
+                                     1, std::multiplies<long>());
+  double *result_data = (double *)malloc(sizeof(double) * result_size);
+
+  for (long i = 0; i < result_size; ++i) {
+    // Convert flat index to multi-dimensional indices for target shape
+    std::vector<long> indices(target_shape.size());
+    long temp = i;
+    for (long j = target_shape.size() - 1; j >= 0; --j) {
+      indices[j] = temp % target_shape[j];
+      temp /= target_shape[j];
+    }
+
+    // Calculate index for filler
+    long filler_idx = 0;
+    if (filler->is_array) {
+      std::vector<long> filler_indices(filler_shape.size());
+      long filler_offset = target_shape.size() - filler_shape.size();
+      for (long j = 0; j < filler_shape.size(); ++j) {
+        long idx = j + filler_offset;
+        // Use modulo for broadcasting
+        filler_indices[j] = indices[idx] % filler_shape[j];
+      }
+      filler_idx = filler->to_flat_index(filler_indices);
+    }
+    result_data[i] = filler->get_element(filler_idx);
+  }
+
+  valueStack.push(new Value(target_shape, result_data));
+  free(result_data);
+  delete filler;
+  delete shapeArray;
+}
+
 void duplicate_top() {
   if (valueStack.empty())
     return;
