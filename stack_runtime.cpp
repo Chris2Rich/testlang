@@ -559,6 +559,43 @@ void do_iota() {
   delete shapeArray;
 }
 
+void do_reshape() {
+  if (valueStack.size() < 2) {
+    std::cerr << "Runtime Error: reshape requires 2 arguments (shape and data)" << std::endl;
+    return;
+  }
+
+  Value *shapeArray = valueStack.top();
+  valueStack.pop();
+  Value *dataArray = valueStack.top();
+  valueStack.pop();
+
+  if (!shapeArray->is_array) {
+    std::cerr << "Runtime Error: reshape requires an array for the target shape" << std::endl;
+    valueStack.push(dataArray);
+    valueStack.push(shapeArray);
+    return;
+  }
+
+  std::vector<long> target_shape;
+  for (long i = 0; i < shapeArray->total_size; ++i) {
+    target_shape.push_back(static_cast<long>(shapeArray->data[i]));
+  }
+
+  long new_size = std::accumulate(target_shape.begin(), target_shape.end(), 1, std::multiplies<long>());
+
+  if (new_size != dataArray->total_size) {
+    std::cerr << "Runtime Error: Cannot reshape array with different total size" << std::endl;
+    valueStack.push(dataArray);
+    valueStack.push(shapeArray);
+    return;
+  }
+
+  valueStack.push(new Value(target_shape, dataArray->data));
+  delete dataArray;
+  delete shapeArray;
+}
+
 void duplicate_top() {
   if (valueStack.empty())
     return;
