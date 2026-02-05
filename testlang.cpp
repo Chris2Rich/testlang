@@ -165,9 +165,9 @@ public:
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "push_shape", module.get());
 
-    auto isTopZeroType = llvm::FunctionType::get(doubleType, {}, false);
-    llvm::Function::Create(isTopZeroType, llvm::Function::ExternalLinkage,
-                           "is_top_zero", module.get());
+    auto checkZeroType = llvm::FunctionType::get(doubleType, {}, false);
+    llvm::Function::Create(checkZeroType, llvm::Function::ExternalLinkage,
+                           "check_zero_pop", module.get());
     
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_band", module.get());
@@ -254,7 +254,6 @@ public:
     }
 
     case TokenType::IFZERO: {
-      std::cout << "Handling ifzero token: " << token.value << std::endl;
       if (!currentFunc) {
         std::cerr << "Current function not set!" << std::endl;
         break;
@@ -262,12 +261,12 @@ public:
       llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(context, "ifzero_then", currentFunc);
       llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "ifzero_end", currentFunc);
 
-      auto isZeroFunc = module->getFunction("is_top_zero");
+      auto isZeroFunc = module->getFunction("check_zero_pop");
       if (!isZeroFunc) {
         std::cerr << "is_top_zero function not found!" << std::endl;
         break;
       }
-      auto isZero = builder->CreateCall(isZeroFunc, {}, "is_zero_check");
+      auto isZero = builder->CreateCall(isZeroFunc, {});
 
       auto isZeroI1 = builder->CreateFPTrunc(isZero, llvm::Type::getFloatTy(context));
       isZeroI1 = builder->CreateFCmpOEQ(isZeroI1, llvm::ConstantFP::get(context, llvm::APFloat(1.0f)));
@@ -276,7 +275,6 @@ public:
 
       builder->SetInsertPoint(thenBB);
       if (labels.find(token.value) != labels.end()) {
-        std::cout << "Found label: " << token.value << std::endl;
         builder->CreateBr(labels[token.value]);
       } else {
         std::cerr << "Label " << token.value << " not defined!" << std::endl;

@@ -666,18 +666,26 @@ void pop_value() {
   delete v;
 }
 
-double is_top_zero() {
+double check_zero_pop() {
   if (valueStack.empty()) {
     return 1.0;
   }
   Value *v = valueStack.top();
+  valueStack.pop();
+
+  double result = 0.0;
   if (!v->is_array) {
-    return (v->data[0] == 0.0) ? 1.0 : 0.0;
+    result = (v->data[0] == 0.0) ? 1.0 : 0.0;
+  } else {
+    double sum = 0;
+    for (int i = 0; i < v->total_size; i++) {
+      sum += v->data[i];
+    }
+
+    result = (sum == 0) ? 1.0 : 0.0;
   }
-  double sum = 0;
-  for (int i = 0; i < v->total_size; i++) {
-    sum += v->data[i];
-  }
-  return sum == 0;
+
+  delete v;
+  return result;
 }
 }

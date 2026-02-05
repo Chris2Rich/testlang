@@ -1,7 +1,13 @@
 0
 ? zero_case
-? end
+0
+? one_case
 _(zero_case)
 ; 556
+? end
+
+_(one_case)
+; 762
+? end
 
 _(end)
