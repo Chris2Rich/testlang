@@ -1,8 +1,0 @@
-Token(value='test_label', type=<TokenType.LABEL: 102>)
-Token(value='\n', type=<TokenType.NL: 6>)
-Token(value=';', type=<TokenType.POP: 10>)
-Token(value='-', type=<TokenType.SUB: 41>)
-Token(value='3', type=<TokenType.NUM: 4>)
-Token(value='1', type=<TokenType.NUM: 4>)
-Token(value='\n', type=<TokenType.NL: 6>)
-Token(value='test_label', type=<TokenType.IFZERO: 60>)
