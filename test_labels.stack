@@ -1,6 +1,7 @@
 0
-? test_label
+? zero_case
+? end
+_(zero_case)
+; 556
 
-_(test_label)
-/ 2 + [1 2 3] iota [3] 5
-;
+_(end)

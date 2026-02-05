@@ -249,15 +249,7 @@ public:
   void compileToken(const Token &token) {
     switch (token.type) {
     case TokenType::LABEL: {
-      std::cout << "Handling label token: " << token.value << std::endl;
-      if (!currentFunc) {
-        std::cerr << "Current function not set!" << std::endl;
-        break;
-      }
-      llvm::BasicBlock *bb = llvm::BasicBlock::Create(context, token.value, currentFunc);
-      labels[token.value] = bb;
-      builder->CreateBr(bb);
-      builder->SetInsertPoint(bb);
+      // Labels are now handled in compile() method's first pass
       break;
     }
 
@@ -601,27 +593,50 @@ public:
       }
     }
 
-    std::vector<std::vector<Token>> proceduralLines;
-    if (!proceduralTokens.empty()) {
-      proceduralLines.emplace_back();
-      for (const auto &token : proceduralTokens) {
-        if (token.type == TokenType::NL || token.type == TokenType::EOF_TOK) {
-          if (!proceduralLines.back().empty()) {
-            proceduralLines.emplace_back();
-          }
-        } else {
-          proceduralLines.back().push_back(token);
-        }
+    // First pass: Collect all labels and create basic blocks
+    for (const auto &token : proceduralTokens) {
+      if (token.type == TokenType::LABEL) {
+        labels[token.value] = llvm::BasicBlock::Create(context, token.value, currentFunc);
       }
     }
 
-    for (auto &line : proceduralLines) {
-      if (line.empty())
+    // Second pass: Generate code
+    for (size_t i = 0; i < proceduralTokens.size();) {
+      const auto &token = proceduralTokens[i];
+      
+      if (token.type == TokenType::LABEL) {
+        // If we've already processed this label and are now encountering it in code
+        if (builder->GetInsertBlock() != labels[token.value]) {
+          builder->CreateBr(labels[token.value]);
+          builder->SetInsertPoint(labels[token.value]);
+        }
+        // Skip the label token
+        while (i < proceduralTokens.size() && proceduralTokens[i].type == TokenType::LABEL) {
+          i++;
+        }
+        // Skip any newline tokens after the label
+        while (i < proceduralTokens.size() && proceduralTokens[i].type == TokenType::NL) {
+          i++;
+        }
         continue;
+      }
 
-      std::reverse(line.begin(), line.end());
-      for (const auto &token : line) {
-        compileToken(token);
+      if (token.type == TokenType::NL || token.type == TokenType::EOF_TOK) {
+        i++;
+        continue;
+      }
+
+      // Collect all tokens on the current line (until newline)
+      std::vector<Token> lineTokens;
+      while (i < proceduralTokens.size() && proceduralTokens[i].type != TokenType::NL && proceduralTokens[i].type != TokenType::EOF_TOK) {
+        lineTokens.push_back(proceduralTokens[i]);
+        i++;
+      }
+
+      // Compile the line (reverse it)
+      std::reverse(lineTokens.begin(), lineTokens.end());
+      for (const auto &t : lineTokens) {
+        compileToken(t);
       }
     }
 
