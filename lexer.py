@@ -41,8 +41,11 @@ class TokenType(Enum):
     RCUR = 56
     LCUR = 57
 
+    IFZERO = 60
+
     DEF_START = 100
     DEF_END = 101
+    LABEL = 102
 
 
 Token = collections.namedtuple('Token', ['value', 'type'])
@@ -59,6 +62,18 @@ def tokenize(source_code):
 
     while c < len(source_code):
         char = source_code[c]
+        
+        if char == '?':
+            c += 1
+            # Skip optional whitespace
+            while c < len(source_code) and source_code[c] in " ,\t":
+                c += 1
+            start = c
+            while c < len(source_code) and (source_code[c].isalnum() or source_code[c] == '_'):
+                c += 1
+            value = source_code[start:c]
+            yield Token(value, TokenType.IFZERO)
+            continue
 
         if char in " ,":
             c += 1
@@ -132,6 +147,17 @@ def tokenize(source_code):
                 yield Token("=", TokenType.EQU)
                 c += 1
             continue
+        
+        if char == '_':
+            if c + 1 < len(source_code) and source_code[c+1] == '(':
+                c += 2
+                start = c
+                while c < len(source_code) and source_code[c] != ')':
+                    c += 1
+                value = source_code[start:c]
+                yield Token(value, TokenType.LABEL)
+                c += 1
+                continue
         
         if char.isalpha() or char == '_':
             start = c

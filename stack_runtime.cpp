@@ -657,4 +657,27 @@ void transpose_top() {
 void *runtime_malloc(size_t size) { return std::malloc(size); }
 
 void runtime_free(void *ptr) { std::free(ptr); }
+
+void pop_value() {
+  if (valueStack.empty())
+    return;
+  Value *v = valueStack.top();
+  valueStack.pop();
+  delete v;
+}
+
+double is_top_zero() {
+  if (valueStack.empty()) {
+    return 1.0;
+  }
+  Value *v = valueStack.top();
+  if (!v->is_array) {
+    return (v->data[0] == 0.0) ? 1.0 : 0.0;
+  }
+  double sum = 0;
+  for (int i = 0; i < v->total_size; i++) {
+    sum += v->data[i];
+  }
+  return sum == 0;
+}
 }

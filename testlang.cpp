@@ -72,8 +72,10 @@ enum class TokenType {
   LSQU = 55,
   RCUR = 56,
   LCUR = 57,
+  IFZERO = 60,
   DEF_START = 100,
-  DEF_END = 101
+  DEF_END = 101,
+  LABEL = 102,
 };
 
 struct Token {
@@ -104,6 +106,10 @@ private:
   llvm::Type *int64Type;
 
   std::unordered_map<std::string, llvm::Function *> functions;
+  
+  // For labels and conditional branches
+  std::unordered_map<std::string, llvm::BasicBlock *> labels;
+  llvm::Function *currentFunc;
 
 public:
   StackLangCompiler() : builder(std::make_unique<llvm::IRBuilder<>>(context)) {
@@ -158,6 +164,10 @@ public:
     auto simpleVoidType = llvm::FunctionType::get(voidType, {}, false);
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "push_shape", module.get());
+
+    auto isTopZeroType = llvm::FunctionType::get(doubleType, {}, false);
+    llvm::Function::Create(isTopZeroType, llvm::Function::ExternalLinkage,
+                           "is_top_zero", module.get());
     
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_band", module.get());
@@ -238,6 +248,53 @@ public:
 
   void compileToken(const Token &token) {
     switch (token.type) {
+    case TokenType::LABEL: {
+      std::cout << "Handling label token: " << token.value << std::endl;
+      if (!currentFunc) {
+        std::cerr << "Current function not set!" << std::endl;
+        break;
+      }
+      llvm::BasicBlock *bb = llvm::BasicBlock::Create(context, token.value, currentFunc);
+      labels[token.value] = bb;
+      builder->CreateBr(bb);
+      builder->SetInsertPoint(bb);
+      break;
+    }
+
+    case TokenType::IFZERO: {
+      std::cout << "Handling ifzero token: " << token.value << std::endl;
+      if (!currentFunc) {
+        std::cerr << "Current function not set!" << std::endl;
+        break;
+      }
+      llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(context, "ifzero_then", currentFunc);
+      llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "ifzero_end", currentFunc);
+
+      auto isZeroFunc = module->getFunction("is_top_zero");
+      if (!isZeroFunc) {
+        std::cerr << "is_top_zero function not found!" << std::endl;
+        break;
+      }
+      auto isZero = builder->CreateCall(isZeroFunc, {}, "is_zero_check");
+
+      auto isZeroI1 = builder->CreateFPTrunc(isZero, llvm::Type::getFloatTy(context));
+      isZeroI1 = builder->CreateFCmpOEQ(isZeroI1, llvm::ConstantFP::get(context, llvm::APFloat(1.0f)));
+
+      builder->CreateCondBr(isZeroI1, thenBB, endBB);
+
+      builder->SetInsertPoint(thenBB);
+      if (labels.find(token.value) != labels.end()) {
+        std::cout << "Found label: " << token.value << std::endl;
+        builder->CreateBr(labels[token.value]);
+      } else {
+        std::cerr << "Label " << token.value << " not defined!" << std::endl;
+        builder->CreateBr(endBB);
+      }
+
+      builder->SetInsertPoint(endBB);
+      break;
+    }
+
     case TokenType::NUM: {
       double val = std::stod(token.value);
       auto constant = llvm::ConstantFP::get(doubleType, val);
@@ -510,6 +567,8 @@ public:
 
   void compile(const std::vector<Token> &tokens) {
     auto mainFunc = createMainFunction();
+    currentFunc = mainFunc;
+    labels.clear();
 
     bool inDef = false;
     std::string currentDefName;
@@ -577,6 +636,9 @@ public:
 
     auto entry = llvm::BasicBlock::Create(context, "entry", func);
     auto oldInsertPoint = builder->GetInsertBlock();
+    auto oldCurrentFunc = currentFunc;
+    currentFunc = func;
+    labels.clear();
     builder->SetInsertPoint(entry);
 
     auto reversed_body = body;
@@ -588,6 +650,7 @@ public:
 
     builder->CreateRetVoid();
     builder->SetInsertPoint(oldInsertPoint);
+    currentFunc = oldCurrentFunc;
 
     functions[name] = func;
   }
@@ -792,6 +855,10 @@ std::vector<Token> parseTokenFile(const std::string &filename) {
         type = TokenType::DEF_END;
       else if (typeStr == "EOF")
         type = TokenType::EOF_TOK;
+      else if (typeStr == "LABEL")
+        type = TokenType::LABEL;
+      else if (typeStr == "IFZERO")
+        type = TokenType::IFZERO;
 
       tokens.emplace_back(value, type);
     }
