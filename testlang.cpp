@@ -258,30 +258,37 @@ public:
         std::cerr << "Current function not set!" << std::endl;
         break;
       }
+
       llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(context, "ifzero_then", currentFunc);
-      llvm::BasicBlock *endBB = llvm::BasicBlock::Create(context, "ifzero_end", currentFunc);
+      llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(context, "ifzero_next", currentFunc);
 
       auto isZeroFunc = module->getFunction("check_zero_pop");
-      if (!isZeroFunc) {
-        std::cerr << "is_top_zero function not found!" << std::endl;
-        break;
-      }
       auto isZero = builder->CreateCall(isZeroFunc, {});
 
-      auto isZeroI1 = builder->CreateFPTrunc(isZero, llvm::Type::getFloatTy(context));
-      isZeroI1 = builder->CreateFCmpOEQ(isZeroI1, llvm::ConstantFP::get(context, llvm::APFloat(1.0f)));
+      // Convert result to boolean
+      auto isZeroI1 =
+          builder->CreateFPTrunc(isZero, llvm::Type::getFloatTy(context));
+      isZeroI1 = builder->CreateFCmpOEQ(
+          isZeroI1, llvm::ConstantFP::get(context, llvm::APFloat(1.0f)));
 
-      builder->CreateCondBr(isZeroI1, thenBB, endBB);
+      builder->CreateCondBr(isZeroI1, thenBB, nextBB);
 
+      // --- TRUE PATH (Base Case met) ---
       builder->SetInsertPoint(thenBB);
       if (labels.find(token.value) != labels.end()) {
         builder->CreateBr(labels[token.value]);
       } else {
-        std::cerr << "Label " << token.value << " not defined!" << std::endl;
-        builder->CreateBr(endBB);
+        // If the label 'end' isn't found locally, it means "Stop Recursion"
+        // We must EXIT the function here.
+        if (currentFunc->getName() != "main") {
+          builder->CreateRetVoid();
+        } else {
+          builder->CreateBr(nextBB);
+        }
       }
 
-      builder->SetInsertPoint(endBB);
+      // --- FALSE PATH (Keep recursing) ---
+      builder->SetInsertPoint(nextBB);
       break;
     }
 
@@ -647,6 +654,7 @@ public:
     auto func = llvm::Function::Create(
         funcType, llvm::Function::InternalLinkage, name, module.get());
 
+    functions[name] = func;
     auto entry = llvm::BasicBlock::Create(context, "entry", func);
     auto oldInsertPoint = builder->GetInsertBlock();
     auto oldCurrentFunc = currentFunc;
@@ -658,14 +666,30 @@ public:
     std::reverse(reversed_body.begin(), reversed_body.end());
 
     for (const auto &token : reversed_body) {
-      compileToken(token);
+      if (token.type == TokenType::LABEL) {
+        labels[token.value] =
+            llvm::BasicBlock::Create(context, token.value, currentFunc);
+      }
+    }
+
+    // Generate code
+    for (const auto &token : reversed_body) {
+      if (token.type == TokenType::LABEL) {
+        // Handle label insertion point
+        llvm::BasicBlock *bb = labels[token.value];
+        if (builder->GetInsertBlock() != bb) {
+          builder->CreateBr(bb);
+          builder->SetInsertPoint(bb);
+        }
+      } else {
+        compileToken(token);
+      }
     }
 
     builder->CreateRetVoid();
     builder->SetInsertPoint(oldInsertPoint);
     currentFunc = oldCurrentFunc;
 
-    functions[name] = func;
   }
 
   void generateLLVMIR(const std::string &filename) {
