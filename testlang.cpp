@@ -48,7 +48,7 @@ enum class TokenType {
   BND = 5,
   NL = 6,
   EXP = 7,
-  POP = 10,
+  PPOP = 10,
   FLIP = 11,
   DUPE = 12,
   NOT = 20,
@@ -73,6 +73,7 @@ enum class TokenType {
   RCUR = 56,
   LCUR = 57,
   IFZERO = 60,
+  IFLESSZERO = 61,
   DEF_START = 100,
   DEF_END = 101,
   LABEL = 102,
@@ -169,6 +170,10 @@ public:
     llvm::Function::Create(checkZeroType, llvm::Function::ExternalLinkage,
                            "check_zero_pop", module.get());
     
+    auto checkLessZeroType = llvm::FunctionType::get(doubleType, {}, false);
+    llvm::Function::Create(checkLessZeroType, llvm::Function::ExternalLinkage,
+                           "check_less_zero_pop", module.get());
+    
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_band", module.get());
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
@@ -230,6 +235,8 @@ public:
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "pop_and_print", module.get());
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
+                           "pop", module.get());
+    llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "duplicate_top", module.get());
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "swap_top", module.get());
@@ -254,40 +261,75 @@ public:
     }
 
     case TokenType::IFZERO: {
-      if (!currentFunc) {
-        std::cerr << "Current function not set!" << std::endl;
+      if (!currentFunc)
         break;
-      }
 
-      llvm::BasicBlock *thenBB = llvm::BasicBlock::Create(context, "ifzero_then", currentFunc);
-      llvm::BasicBlock *nextBB = llvm::BasicBlock::Create(context, "ifzero_next", currentFunc);
+      // 1. Create the branch targets
+      // 'thenBB' is where we go if the condition is true (the JUMP)
+      // 'nextBB' is the continuation of the current code (no jump)
+      llvm::BasicBlock *thenBB =
+          llvm::BasicBlock::Create(context, "ifzero_jump", currentFunc);
+      llvm::BasicBlock *nextBB =
+          llvm::BasicBlock::Create(context, "ifzero_cont", currentFunc);
 
+      // 2. Call the runtime check
       auto isZeroFunc = module->getFunction("check_zero_pop");
-      auto isZero = builder->CreateCall(isZeroFunc, {});
+      auto isZeroVal = builder->CreateCall(isZeroFunc, {});
 
-      // Convert result to boolean
-      auto isZeroI1 =
-          builder->CreateFPTrunc(isZero, llvm::Type::getFloatTy(context));
-      isZeroI1 = builder->CreateFCmpOEQ(
-          isZeroI1, llvm::ConstantFP::get(context, llvm::APFloat(1.0f)));
+      // 3. Compare: check_zero_pop returns 1.0 for true
+      auto isZeroI1 = builder->CreateFCmpOEQ(
+          isZeroVal, llvm::ConstantFP::get(context, llvm::APFloat(1.0)));
 
       builder->CreateCondBr(isZeroI1, thenBB, nextBB);
 
-      // --- TRUE PATH (Base Case met) ---
+      // --- Path: Condition is True (The actual Goto) ---
       builder->SetInsertPoint(thenBB);
-      if (labels.find(token.value) != labels.end()) {
-        builder->CreateBr(labels[token.value]);
+      if (labels.count(token.value)) {
+        builder->CreateBr(labels[token.value]); // Jump to the target label
       } else {
-        // If the label 'end' isn't found locally, it means "Stop Recursion"
-        // We must EXIT the function here.
-        if (currentFunc->getName() != "main") {
-          builder->CreateRetVoid();
-        } else {
-          builder->CreateBr(nextBB);
-        }
+        // Fallback: If label doesn't exist, return from function (or handle
+        // error)
+        builder->CreateRetVoid();
       }
 
-      // --- FALSE PATH (Keep recursing) ---
+      // --- Path: Condition is False (Continue) ---
+      builder->SetInsertPoint(nextBB);
+      break;
+    }
+
+    case TokenType::IFLESSZERO: {
+      if (!currentFunc)
+        break;
+
+      // 1. Create the branch targets
+      // 'thenBB' is where we go if the condition is true (the JUMP)
+      // 'nextBB' is the continuation of the current code (no jump)
+      llvm::BasicBlock *thenBB =
+          llvm::BasicBlock::Create(context, "ifzero_jump", currentFunc);
+      llvm::BasicBlock *nextBB =
+          llvm::BasicBlock::Create(context, "ifzero_cont", currentFunc);
+
+      // 2. Call the runtime check
+      auto isZeroFunc = module->getFunction("check_less_zero_pop");
+      auto isZeroVal = builder->CreateCall(isZeroFunc, {});
+
+      // 3. Compare: check_zero_pop returns 1.0 for true
+      auto isZeroI1 = builder->CreateFCmpOEQ(
+          isZeroVal, llvm::ConstantFP::get(context, llvm::APFloat(1.0)));
+
+      builder->CreateCondBr(isZeroI1, thenBB, nextBB);
+
+      // --- Path: Condition is True (The actual Goto) ---
+      builder->SetInsertPoint(thenBB);
+      if (labels.count(token.value)) {
+        builder->CreateBr(labels[token.value]); // Jump to the target label
+      } else {
+        // Fallback: If label doesn't exist, return from function (or handle
+        // error)
+        builder->CreateRetVoid();
+      }
+
+      // --- Path: Condition is False (Continue) ---
       builder->SetInsertPoint(nextBB);
       break;
     }
@@ -441,7 +483,7 @@ public:
       break;
     }
 
-    case TokenType::POP: {
+    case TokenType::PPOP: {
       auto printFunc = module->getFunction("pop_and_print");
       builder->CreateCall(printFunc, {});
       break;
@@ -460,6 +502,9 @@ public:
       } else if (token.value == "shape") {
         auto shapeFunc = module->getFunction("push_shape");
         builder->CreateCall(shapeFunc, {});
+      } else if (token.value == "pop") {
+        auto popFunc = module->getFunction("pop");
+        builder->CreateCall(popFunc, {});
       } else if (token.value == "iota") {
         auto iotaFunc = module->getFunction("do_iota");
         builder->CreateCall(iotaFunc, {});
@@ -874,8 +919,8 @@ std::vector<Token> parseTokenFile(const std::string &filename) {
         type = TokenType::MUL;
       else if (typeStr == "DIV")
         type = TokenType::DIV;
-      else if (typeStr == "POP")
-        type = TokenType::POP;
+      else if (typeStr == "PPOP")
+        type = TokenType::PPOP;
       else if (typeStr == "EXP")
         type = TokenType::EXP;
       else if (typeStr == "DUPE")
@@ -896,6 +941,8 @@ std::vector<Token> parseTokenFile(const std::string &filename) {
         type = TokenType::LABEL;
       else if (typeStr == "IFZERO")
         type = TokenType::IFZERO;
+      else if (typeStr == "IFLESSZERO")
+        type = TokenType::IFLESSZERO;
 
       tokens.emplace_back(value, type);
     }

@@ -1,5 +1,6 @@
+val => 5
 factorial => * factorial - 1 . ? end - 1 .
 
-factorial 160
+factorial val
 _(end)
 ;

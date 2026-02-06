@@ -1,0 +1,2 @@
+fib => _(end) 1 _(negative) ? end 0 -1 ?< negative
+; fib [1,2,3 -5, -7,1 ,2, -8]

@@ -12,7 +12,7 @@ class TokenType(Enum):
     NL = 6
     EXP = 7
 
-    POP = 10
+    PPOP = 10
     FLIP = 11
     DUPE = 12
 
@@ -42,6 +42,7 @@ class TokenType(Enum):
     LCUR = 57
 
     IFZERO = 60
+    IFLESSZERO = 61
 
     DEF_START = 100
     DEF_END = 101
@@ -50,11 +51,18 @@ class TokenType(Enum):
 
 Token = collections.namedtuple('Token', ['value', 'type'])
 
+def _is_complex(body):
+    """Checks if a function body contains control flow tokens."""
+    for token in body:
+        if token.type in (TokenType.LABEL, TokenType.IFZERO, TokenType.IFLESSZERO):
+            return True
+    return False
+
 def tokenize(source_code):
     c = 0
     single_char_map = {
         '\n': TokenType.NL, '+': TokenType.ADD, '*': TokenType.MUL, '%': TokenType.MOD,
-        '@': TokenType.EXP, ';': TokenType.POP, ':': TokenType.FLIP, '.': TokenType.DUPE,
+        '@': TokenType.EXP, ';': TokenType.PPOP, ':': TokenType.FLIP, '.': TokenType.DUPE,
         '&': TokenType.BAN, '|': TokenType.BOR, '^': TokenType.BXR, '~': TokenType.BNT,
         '(': TokenType.LBRA, ')': TokenType.RBRA, '[': TokenType.LSQU, ']': TokenType.RSQU,
         '{': TokenType.LCUR, '}': TokenType.RCUR,
@@ -66,13 +74,23 @@ def tokenize(source_code):
         if char == '?':
             c += 1
             # Skip optional whitespace
-            while c < len(source_code) and source_code[c] in " ,\t":
+            if c < len(source_code) and source_code[c] == "<":
                 c += 1
-            start = c
-            while c < len(source_code) and (source_code[c].isalnum() or source_code[c] == '_'):
-                c += 1
-            value = source_code[start:c]
-            yield Token(value, TokenType.IFZERO)
+                while c < len(source_code) and source_code[c] in " ,\t":
+                    c += 1
+                start = c
+                while c < len(source_code) and (source_code[c].isalnum()):
+                    c += 1
+                value = source_code[start:c]
+                yield Token(value, TokenType.IFLESSZERO)
+            else:
+                while c < len(source_code) and source_code[c] in " ,\t":
+                    c += 1
+                start = c
+                while c < len(source_code) and (source_code[c].isalnum()):
+                    c += 1
+                value = source_code[start:c]
+                yield Token(value, TokenType.IFZERO)
             continue
 
         if char in " ,":
@@ -238,11 +256,16 @@ def process_bindings(tokens):
                 new_line = []
                 for token in line_tokens:
                     if token.type == TokenType.ID and token.value in identifiers:
-                        if not _check_is_recursive(token.value, identifiers):
+                        # Check for recursion AND complexity
+                        is_recursive = _check_is_recursive(token.value, identifiers)
+                        is_complex = _is_complex(identifiers[token.value])
+                        
+                        # Only inline if it is SIMPLE and NON-RECURSIVE
+                        if not is_recursive and not is_complex:
                             new_line.extend(identifiers[token.value])
                             expanded = True
                         else:
-                            new_line.append(token)
+                            new_line.append(token) # Keep it as a function call
                     else:
                         new_line.append(token)
                 line_tokens = new_line

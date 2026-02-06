@@ -428,6 +428,16 @@ void pop_and_print() {
   delete val;
 }
 
+void pop() {
+  if (valueStack.empty()) {
+    std::cout << "Stack empty" << std::endl;
+    return;
+  }
+
+  valueStack.pop();
+
+}
+
 void band_op(double a, double b, double *result) {
   *result = double(long(a) & long(b));
 }
@@ -677,12 +687,35 @@ double check_zero_pop() {
   if (!v->is_array) {
     result = (v->data[0] == 0.0) ? 1.0 : 0.0;
   } else {
-    double sum = 0;
+    bool flag = false;
     for (int i = 0; i < v->total_size; i++) {
-      sum += v->data[i];
+      flag = (flag != false) || (v->data[i] != 0);
     }
 
-    result = (sum == 0) ? 1.0 : 0.0;
+    result = (flag == false) ? 1.0 : 0.0;
+  }
+
+  delete v;
+  return result;
+}
+
+double check_less_zero_pop() {
+  if (valueStack.empty()) {
+    return 1.0;
+  }
+  Value *v = valueStack.top();
+  valueStack.pop();
+
+  double result = 0.0;
+  if (!v->is_array) {
+    result = (v->data[0] <= 0.0) ? 1.0 : 0.0;
+  } else {
+    bool flag = false;
+    for (int i = 0; i < v->total_size; i++) {
+      flag = (flag != false) || (v->data[i] > 0);
+    }
+
+    result = (flag == false) ? 1.0 : 0.0;
   }
 
   delete v;
