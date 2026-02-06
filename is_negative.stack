@@ -1,0 +1,2 @@
+is_negative => _(end) 1 _(negative) ? end 0 0 ?< negative
+; is_negative 3

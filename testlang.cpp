@@ -256,7 +256,26 @@ public:
   void compileToken(const Token &token) {
     switch (token.type) {
     case TokenType::LABEL: {
-      // Labels are now handled in compile() method's first pass
+      // 1. Find the pre-created Basic Block for this label
+      if (labels.find(token.value) == labels.end()) {
+        // Should not happen if Pass 1 worked, but good for safety
+        std::cerr << "Error: Label " << token.value << " not found."
+                  << std::endl;
+        break;
+      }
+
+      llvm::BasicBlock *targetBB = labels[token.value];
+
+      // 2. Connect the previous block to this one (Fall-through)
+      // If we are currently writing in a block that doesn't stop (no ret/br),
+      // we must jump to this new label.
+      if (builder->GetInsertBlock() &&
+          !builder->GetInsertBlock()->getTerminator()) {
+        builder->CreateBr(targetBB);
+      }
+
+      // 3. Switch insertion point to the new block
+      builder->SetInsertPoint(targetBB);
       break;
     }
 
@@ -652,39 +671,26 @@ public:
 
     // Second pass: Generate code
     for (size_t i = 0; i < proceduralTokens.size();) {
-      const auto &token = proceduralTokens[i];
-      
-      if (token.type == TokenType::LABEL) {
-        // If we've already processed this label and are now encountering it in code
-        if (builder->GetInsertBlock() != labels[token.value]) {
-          builder->CreateBr(labels[token.value]);
-          builder->SetInsertPoint(labels[token.value]);
-        }
-        // Skip the label token
-        while (i < proceduralTokens.size() && proceduralTokens[i].type == TokenType::LABEL) {
-          i++;
-        }
-        // Skip any newline tokens after the label
-        while (i < proceduralTokens.size() && proceduralTokens[i].type == TokenType::NL) {
-          i++;
-        }
-        continue;
-      }
-
-      if (token.type == TokenType::NL || token.type == TokenType::EOF_TOK) {
+      // Skip newlines/EOF at the start of iteration
+      if (proceduralTokens[i].type == TokenType::NL ||
+          proceduralTokens[i].type == TokenType::EOF_TOK) {
         i++;
         continue;
       }
 
-      // Collect all tokens on the current line (until newline)
+      // Collect tokens for the current line
       std::vector<Token> lineTokens;
-      while (i < proceduralTokens.size() && proceduralTokens[i].type != TokenType::NL && proceduralTokens[i].type != TokenType::EOF_TOK) {
+      while (i < proceduralTokens.size() &&
+             proceduralTokens[i].type != TokenType::NL &&
+             proceduralTokens[i].type != TokenType::EOF_TOK) {
         lineTokens.push_back(proceduralTokens[i]);
         i++;
       }
 
-      // Compile the line (reverse it)
+      // Reverse line for RTL execution
       std::reverse(lineTokens.begin(), lineTokens.end());
+
+      // Compile ALL tokens, including LABELs
       for (const auto &t : lineTokens) {
         compileToken(t);
       }
@@ -717,18 +723,8 @@ public:
       }
     }
 
-    // Generate code
     for (const auto &token : reversed_body) {
-      if (token.type == TokenType::LABEL) {
-        // Handle label insertion point
-        llvm::BasicBlock *bb = labels[token.value];
-        if (builder->GetInsertBlock() != bb) {
-          builder->CreateBr(bb);
-          builder->SetInsertPoint(bb);
-        }
-      } else {
-        compileToken(token);
-      }
+      compileToken(token);
     }
 
     builder->CreateRetVoid();
