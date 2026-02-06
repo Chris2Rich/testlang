@@ -16,7 +16,7 @@ fi
 
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
-    echo "Warning: python3 not found. Make sure Python 3 is installed for the lexer."
+    echo "Warning: python3 not found. Make sure Python 3 is installed."
 fi
 
 # Build the compiler
@@ -41,9 +41,3 @@ echo "  ./testlang source.stack output --obj"
 echo ""
 echo "With custom lexer path:"
 echo "  ./testlang source.stack myprogram --exe /path/to/lexer.py"
-echo ""
-echo "The compiler will automatically:"
-echo "1. Run your Python lexer on the source file"
-echo "2. Parse the generated tokens"
-echo "3. Compile to the specified output format"
-echo "4. Clean up temporary files"
