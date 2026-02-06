@@ -1,7 +1,0 @@
-dot_product => reduce<+> *
-dot_product [4, 5, 6, 7] [1, 2, 3, 4]
-func_double => +.
-func_meta => func_double dot_product * 2 .
-func_double dot_product [1 2] [4 5]
-
-func_meta [1,2,3]

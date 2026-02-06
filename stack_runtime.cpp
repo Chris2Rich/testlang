@@ -569,6 +569,41 @@ void do_iota() {
   delete shapeArray;
 }
 
+void do_iota_n() {
+  if (valueStack.size() < 1) {
+    std::cerr << "Runtime Error: iota_n requires 1 arguments (shape)"
+              << std::endl;
+    return;
+  }
+
+  Value *shapeArray = valueStack.top();
+  valueStack.pop();
+
+  if (!shapeArray->is_array) {
+    std::cerr << "Runtime Error: iota requires an array for the target shape"
+              << std::endl;
+    delete shapeArray;
+    return;
+  }
+
+  std::vector<long> target_shape;
+  for (long i = 0; i < shapeArray->total_size; ++i) {
+    target_shape.push_back(static_cast<long>(shapeArray->data[i]));
+  }
+
+  long result_size = std::accumulate(target_shape.begin(), target_shape.end(),
+                                     1, std::multiplies<long>());
+  double *result_data = (double *)malloc(sizeof(double) * result_size);
+
+  for (long i = 0; i < result_size; ++i) {
+    result_data[i] = i;
+  }
+
+  valueStack.push(new Value(target_shape, result_data));
+  free(result_data);
+  delete shapeArray;
+}
+
 void do_reshape() {
   if (valueStack.size() < 2) {
     std::cerr << "Runtime Error: reshape requires 2 arguments (shape and data)" << std::endl;

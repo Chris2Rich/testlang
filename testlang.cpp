@@ -223,6 +223,8 @@ public:
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_iota", module.get());
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
+                           "do_iota_n", module.get());
+    llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_reshape", module.get());
 
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
@@ -527,6 +529,9 @@ public:
       } else if (token.value == "iota") {
         auto iotaFunc = module->getFunction("do_iota");
         builder->CreateCall(iotaFunc, {});
+      } else if (token.value == "iota_n") {
+        auto iota_nFunc = module->getFunction("do_iota_n");
+        builder->CreateCall(iota_nFunc, {});
       } else if (token.value == "reshape") {
         auto reshapeFunc = module->getFunction("do_reshape");
         builder->CreateCall(reshapeFunc, {});
