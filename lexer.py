@@ -1,5 +1,6 @@
 import argparse
 import collections
+import os
 from enum import Enum
 
 class TokenType(Enum):
@@ -43,6 +44,9 @@ class TokenType(Enum):
 
     IFZERO = 60
     IFLESSZERO = 61
+
+    IMPORT = 110
+    IMPORTC = 111
 
     DEF_START = 100
     DEF_END = 101
@@ -179,9 +183,31 @@ def tokenize(source_code):
         
         if char.isalpha() or char == '_':
             start = c
-            while c < len(source_code) and (source_code[c].isalnum() or source_code[c] == '_'):
+            has_dot = False
+            while c < len(source_code) and (source_code[c].isalnum() or source_code[c] == '_' or (source_code[c] == '.' and not has_dot)):
+                if source_code[c] == '.':
+                    has_dot = True
                 c += 1
             value = source_code[start:c]
+            
+            # Handle import "module" and importc "module" syntax
+            if value == 'import' or value == 'importc':
+                # Skip whitespace
+                while c < len(source_code) and source_code[c] in " \t":
+                    c += 1
+                # Expect quote
+                if c < len(source_code) and source_code[c] in '"\'':
+                    quote = source_code[c]
+                    c += 1
+                    module_start = c
+                    while c < len(source_code) and source_code[c] != quote:
+                        c += 1
+                    module_name = source_code[module_start:c]
+                    c += 1  # Skip closing quote
+                    token_type = TokenType.IMPORT if value == 'import' else TokenType.IMPORTC
+                    yield Token(module_name, token_type)
+                    continue
+            
             yield Token(value, TokenType.ID)
         elif char.isdigit():
             start = c
@@ -192,15 +218,6 @@ def tokenize(source_code):
                 c += 1
             value = source_code[start:c]
             yield Token(value, TokenType.NUM)
-        elif char == '"' or char == "'":
-            quote = char
-            start = c
-            c += 1
-            while c < len(source_code) and source_code[c] != quote:
-                c += 1
-            c += 1
-            value = source_code[start:c]
-            yield Token(value, TokenType.STR)
         else:
             c += 1
 
@@ -208,9 +225,35 @@ def tokenize(source_code):
 
 
 
+def collect_all_identifiers(tokens):
+    """Collect all function definitions from the token stream (including imported modules)."""
+    identifiers = {}
+    i = 0
+    while i < len(tokens):
+        # Look for pattern: ID BND ...
+        if (tokens[i].type == TokenType.ID and 
+            i + 1 < len(tokens) and 
+            tokens[i + 1].type == TokenType.BND):
+            name = tokens[i].value
+            # Find the end of the body (next NL)
+            body_start = i + 2
+            body_end = body_start
+            while body_end < len(tokens) and tokens[body_end].type != TokenType.NL:
+                body_end += 1
+            body = tokens[body_start:body_end]
+            identifiers[name] = body
+            i = body_end + 1 if body_end < len(tokens) else body_end
+        else:
+            i += 1
+    return identifiers
+
+
 def process_bindings(tokens):
     token_list = list(tokens)
-    identifiers = {}
+    
+    # Collect ALL identifiers including those from imported modules
+    identifiers = collect_all_identifiers(token_list)
+    
     processed_procedural_code = []
 
     def _check_is_recursive(name, current_identifiers):
@@ -246,9 +289,8 @@ def process_bindings(tokens):
                          line_tokens[1].type == TokenType.BND)
 
         if is_definition:
-            name = line_tokens[0].value
-            body = line_tokens[2:]
-            identifiers[name] = body
+            # Skip definitions here - we'll handle them in the DEF_START section
+            pass
         elif line_tokens:
             expanded = True
             while expanded:
@@ -284,11 +326,12 @@ def process_bindings(tokens):
         visited = set(needed_ids)
         while q:
             func_name = q.popleft()
-            defs_to_write.add(func_name)
-            for token in identifiers.get(func_name, []):
-                if token.type == TokenType.ID and token.value not in visited:
-                    visited.add(token.value)
-                    q.append(token.value)
+            if func_name in identifiers:
+                defs_to_write.add(func_name)
+                for token in identifiers.get(func_name, []):
+                    if token.type == TokenType.ID and token.value not in visited:
+                        visited.add(token.value)
+                        q.append(token.value)
     
     final_stream = []
     
@@ -308,7 +351,7 @@ def process_bindings(tokens):
 
     final_stream.extend(processed_procedural_code)
 
-    return final_stream            
+    return final_stream
     
 class TokenIterator:
     def __init__(self, tokens):
@@ -412,10 +455,295 @@ def remove_nl(token_stream):
             
     return cleaned_stream
 
+
+def cleanup_eof_tokens(token_stream):
+    """Remove all EOF tokens and add a single one at the end."""
+    if not token_stream:
+        return [Token("eof", TokenType.EOF)]
+    
+    # Filter out all EOF tokens
+    non_eof = [t for t in token_stream if t.type != TokenType.EOF]
+    
+    # Add a single EOF at the end
+    non_eof.append(Token("eof", TokenType.EOF))
+    
+    return non_eof
+
+
+def get_search_paths():
+    """Get the list of paths to search for modules."""
+    paths = []
+    # Check TESTLANG_PATH environment variable
+    testlang_path = os.environ.get('TESTLANG_PATH', '')
+    if testlang_path:
+        paths.extend(testlang_path.split(':'))
+    # Also check current directory
+    paths.append('.')
+    return paths
+
+
+def find_module_file(module_name):
+    """Find a .stack module file in the search paths."""
+    search_paths = get_search_paths()
+    for path in search_paths:
+        full_path = os.path.join(path, f"{module_name}.stack")
+        if os.path.isfile(full_path):
+            return full_path
+    return None
+
+
+def find_c_module_file(module_name):
+    """Find a C object file in the search paths."""
+    search_paths = get_search_paths()
+    extensions = ['.o', '.a', '.so']
+    prefixes = ['', 'lib']
+    
+    for path in search_paths:
+        for prefix in prefixes:
+            for ext in extensions:
+                full_path = os.path.join(path, f"{prefix}{module_name}{ext}")
+                if os.path.isfile(full_path):
+                    return full_path
+    return None
+
+
+class CircularImportError(Exception):
+    """Raised when a circular import is detected."""
+    pass
+
+
+def load_module_tokens(module_name, module_stack=None, c_objects=None):
+    """
+    Recursively load a module and its dependencies.
+    
+    Args:
+        module_name: Name of the module to load
+        module_stack: Stack of currently loading modules (for circular detection)
+        c_objects: Set to collect C object file paths
+    
+    Returns:
+        List of tokens from the module with prefixed names
+    """
+    if module_stack is None:
+        module_stack = []
+    if c_objects is None:
+        c_objects = set()
+    
+    # Check for circular imports
+    if module_name in module_stack:
+        chain = ' -> '.join(module_stack + [module_name])
+        raise CircularImportError(f"Circular import detected: {chain}")
+    
+    module_path = find_module_file(module_name)
+    if not module_path:
+        raise FileNotFoundError(f"Module '{module_name}' not found in search paths")
+    
+    with open(module_path, 'r') as f:
+        source = f.read()
+    
+    # Tokenize the module source
+    tokens = list(tokenize(source))
+    
+    # Process imports and collect module tokens
+    result_tokens = []
+    imported_modules = set()
+    
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        
+        if token.type == TokenType.IMPORT:
+            imported_module = token.value
+            if imported_module not in imported_modules:
+                imported_modules.add(imported_module)
+                # Recursively load the imported module
+                sub_tokens = load_module_tokens(
+                    imported_module, 
+                    module_stack + [module_name],
+                    c_objects
+                )
+                result_tokens.extend(sub_tokens)
+            i += 1
+            # Skip following NL if present
+            if i < len(tokens) and tokens[i].type == TokenType.NL:
+                i += 1
+            continue
+        
+        elif token.type == TokenType.IMPORTC:
+            imported_c_module = token.value
+            c_path = find_c_module_file(imported_c_module)
+            if c_path:
+                c_objects.add(c_path)
+            else:
+                raise FileNotFoundError(f"C module '{imported_c_module}' not found in search paths")
+            i += 1
+            # Skip following NL if present
+            if i < len(tokens) and tokens[i].type == TokenType.NL:
+                i += 1
+            continue
+        
+        result_tokens.append(token)
+        i += 1
+    
+    # Prefix all function definitions and calls with module name
+    prefixed_tokens = prefix_module_tokens(result_tokens, module_name)
+    
+    return prefixed_tokens
+
+
+def prefix_module_tokens(tokens, module_name):
+    """
+    Prefix all identifiers in a module with the module name.
+    
+    Function definitions: func => body  becomes  module.func => body
+    Function calls: func  becomes  module.func (if not already qualified)
+    Qualified calls (other.func) are left as-is.
+    """
+    result = []
+    defined_functions = set()
+    
+    # First pass: collect all defined function names in this module
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        # Look for pattern: ID BND ...
+        if (token.type == TokenType.ID and 
+            i + 1 < len(tokens) and 
+            tokens[i + 1].type == TokenType.BND):
+            defined_functions.add(token.value)
+        i += 1
+    
+    # Second pass: prefix tokens
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        
+        if token.type == TokenType.ID:
+            # Check if this is a function definition
+            if i + 1 < len(tokens) and tokens[i + 1].type == TokenType.BND:
+                # This is a definition: prefix the function name
+                result.append(Token(f"{module_name}.{token.value}", TokenType.ID))
+            else:
+                # This is a function call
+                if '.' in token.value:
+                    # Already qualified (e.g., other.func), leave as-is
+                    result.append(token)
+                elif token.value in defined_functions:
+                    # Call to a function defined in this module: prefix it
+                    result.append(Token(f"{module_name}.{token.value}", TokenType.ID))
+                else:
+                    # Could be a builtin or undefined, leave as-is for now
+                    # Actually, for safety, we should prefix all calls to defined functions
+                    result.append(token)
+        else:
+            result.append(token)
+        
+        i += 1
+    
+    return result
+
+
+def prefix_main_tokens(tokens, main_module_name="main"):
+    """
+    Prefix all function definitions and calls in the main file.
+    
+    Function definitions: func => body  becomes  main.func => body
+    Function calls: func  becomes  main.func (for locally defined functions)
+    Qualified calls (module.func) are left as-is.
+    """
+    result = []
+    defined_functions = set()
+    
+    # First pass: collect all defined function names (only those without dots - main file functions)
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if (token.type == TokenType.ID and 
+            i + 1 < len(tokens) and 
+            tokens[i + 1].type == TokenType.BND and
+            '.' not in token.value):  # Only collect main file functions (no dots)
+            defined_functions.add(token.value)
+        i += 1
+    
+    # Second pass: prefix tokens
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        
+        if token.type == TokenType.ID:
+            # If already contains a dot, it's already module-qualified - leave as-is
+            if '.' in token.value:
+                result.append(token)
+            # Check if this is a function definition
+            elif i + 1 < len(tokens) and tokens[i + 1].type == TokenType.BND:
+                # This is a definition: prefix the function name
+                result.append(Token(f"{main_module_name}.{token.value}", TokenType.ID))
+            else:
+                # This is a function call
+                if token.value in defined_functions:
+                    # Call to a locally defined function: prefix it
+                    result.append(Token(f"{main_module_name}.{token.value}", TokenType.ID))
+                else:
+                    # Undefined or builtin, leave as-is
+                    result.append(token)
+        else:
+            result.append(token)
+        
+        i += 1
+    
+    return result
+
+
+def process_imports(tokens):
+    """
+    Process all imports in a token stream and return combined tokens.
+    
+    Returns: (combined_tokens, c_object_files)
+    """
+    result_tokens = []
+    c_objects = set()
+    imported_modules = set()
+    
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        
+        if token.type == TokenType.IMPORT:
+            imported_module = token.value
+            if imported_module not in imported_modules:
+                imported_modules.add(imported_module)
+                # Load the module recursively
+                module_tokens = load_module_tokens(imported_module, c_objects=c_objects)
+                result_tokens.extend(module_tokens)
+            i += 1
+            # Skip following NL if present
+            if i < len(tokens) and tokens[i].type == TokenType.NL:
+                i += 1
+            continue
+        
+        elif token.type == TokenType.IMPORTC:
+            imported_c_module = token.value
+            c_path = find_c_module_file(imported_c_module)
+            if c_path:
+                c_objects.add(c_path)
+            else:
+                raise FileNotFoundError(f"C module '{imported_c_module}' not found in search paths")
+            i += 1
+            # Skip following NL if present
+            if i < len(tokens) and tokens[i].type == TokenType.NL:
+                i += 1
+            continue
+        
+        result_tokens.append(token)
+        i += 1
+    
+    return result_tokens, c_objects
+
 def main():
     parser = argparse.ArgumentParser(description="An efficient interpreter for a custom language.")
     parser.add_argument("input", nargs='?', default="tests/features/array_parse.txt")
     parser.add_argument("output", nargs='?', default="out.txt")
+    parser.add_argument("--c-objects", nargs='?', default=None, help="Output file for C object file paths")
     args = parser.parse_args()
 
     print(f"Starting Processing. Input file is {args.input}")
@@ -427,18 +755,46 @@ def main():
         print(f"Error: Input file not found at '{args.input}'")
         return
 
-    token_stream = tokenize(source)
+    try:
+        # Tokenize the source
+        token_stream = list(tokenize(source))
+        
+        # Process imports and get C object files
+        imported_tokens, c_objects = process_imports(token_stream)
+        
+        # Prefix main file tokens
+        prefixed_tokens = prefix_main_tokens(imported_tokens)
+        
+        # Process bindings
+        processed_tokens = process_bindings(prefixed_tokens)
+        
+        # Clean up multiple EOF tokens before parse_arrays (which stops on EOF)
+        cleaned_eof_tokens = cleanup_eof_tokens(processed_tokens)
+        
+        # Parse arrays
+        arrayed_tokens = list(parse_arrays(cleaned_eof_tokens))
+        final_tokens = remove_nl(arrayed_tokens)
 
-    processed_tokens = process_bindings(token_stream)
-
-    arrayed_tokens = list(parse_arrays(processed_tokens))
-    final_tokens = remove_nl(arrayed_tokens)
-
-    with open(args.output, "w") as o_file:
-        for token in final_tokens:
-            o_file.write(str(token) + "\n")
-    
-    print(f"Processing complete. Output written to {args.output}")
+        # Write tokens to output file
+        with open(args.output, "w") as o_file:
+            for token in final_tokens:
+                o_file.write(str(token) + "\n")
+        
+        # Write C object files to separate file if requested
+        if args.c_objects and c_objects:
+            with open(args.c_objects, "w") as c_file:
+                for obj_path in c_objects:
+                    c_file.write(obj_path + "\n")
+            print(f"C object files written to {args.c_objects}")
+        
+        print(f"Processing complete. Output written to {args.output}")
+        
+    except CircularImportError as e:
+        print(f"Error: {e}")
+        return 1
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        return 1
 
 
 if __name__ == "__main__":

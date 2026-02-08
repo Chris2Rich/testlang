@@ -526,6 +526,30 @@ public:
       } else if (token.value == "pop") {
         auto popFunc = module->getFunction("pop");
         builder->CreateCall(popFunc, {});
+      } else if (token.value.find('.') != std::string::npos) {
+        // Module-qualified function call: module.func
+        // First check if it's a defined function
+        auto func = functions.find(token.value);
+        if (func != functions.end()) {
+          builder->CreateCall(func->second, {});
+        } else {
+          // It's an external function (from C module) - extract function name after dot
+          size_t dot_pos = token.value.find('.');
+          std::string func_name = token.value.substr(dot_pos + 1);
+          
+          // Check if already declared
+          auto existing = module->getFunction(func_name);
+          if (existing) {
+            builder->CreateCall(existing, {});
+          } else {
+            // Declare the external function
+            auto voidType = llvm::Type::getVoidTy(context);
+            auto funcType = llvm::FunctionType::get(voidType, {}, false);
+            auto extFunc = llvm::Function::Create(
+                funcType, llvm::Function::ExternalLinkage, func_name, module.get());
+            builder->CreateCall(extFunc, {});
+          }
+        }
       } else if (token.value == "iota") {
         auto iotaFunc = module->getFunction("do_iota");
         builder->CreateCall(iotaFunc, {});
@@ -798,9 +822,7 @@ public:
     std::string objFile = filename + ".o";
     generateObjectFile(objFile);
 
-    std::string linkCmd = "clang++ -o " + filename + " " + objFile +
-                          " -Wl,--whole-archive " + runtimeLibPath +
-                          " -Wl,--no-whole-archive";
+    std::string linkCmd = "clang++ -o " + filename + " " + objFile;
     if (!runtimeLibPath.empty()) {
       linkCmd += " " + runtimeLibPath;
     }
@@ -994,8 +1016,9 @@ int main(int argc, char *argv[]) {
   std::cout << "Compiling Stack Language source: " << sourceFile << std::endl;
 
   std::string tmpTokenFile = "tmp_tokens.txt";
+  std::string tmpCObjectsFile = "tmp_c_objects.txt";
   std::string lexerCommand = "python3 \"" + lexerPath + "\" \"" + sourceFile +
-                             "\" \"" + tmpTokenFile + "\"";
+                             "\" \"" + tmpTokenFile + "\" --c-objects=\"" + tmpCObjectsFile + "\"";
 
   std::cout << "Running lexer: " << lexerCommand << std::endl;
   int lexerResult = std::system(lexerCommand.c_str());
@@ -1037,11 +1060,25 @@ int main(int argc, char *argv[]) {
   if (!compiler.verify()) {
     std::cerr << "Module verification failed!" << std::endl;
     std::remove(tmpTokenFile.c_str());
+    std::remove(tmpCObjectsFile.c_str());
     return 1;
   }
 
   std::cout << "Module verified. Optimizing..." << std::endl;
   compiler.optimize();
+
+  // Read C object files for linking
+  std::vector<std::string> cObjectFiles;
+  std::ifstream cObjectsCheck(tmpCObjectsFile);
+  if (cObjectsCheck.good()) {
+    std::string line;
+    while (std::getline(cObjectsCheck, line)) {
+      if (!line.empty()) {
+        cObjectFiles.push_back(line);
+      }
+    }
+    cObjectsCheck.close();
+  }
 
   if (outputMode == "--ir") {
     compiler.generateLLVMIR(outputFile + ".ll");
@@ -1050,19 +1087,25 @@ int main(int argc, char *argv[]) {
     compiler.generateObjectFile(outputFile + ".o");
     std::cout << "Object file generated: " << outputFile << ".o" << std::endl;
   } else if (outputMode == "--exe") {
-    compiler.generateExecutable(outputFile, "./libstack_runtime.a");
+    std::string extraObjects;
+    for (const auto& obj : cObjectFiles) {
+      extraObjects += " " + obj;
+    }
+    compiler.generateExecutable(outputFile, "./libstack_runtime.a" + extraObjects);
     std::cout << "Executable generated: " << outputFile << std::endl;
   } else {
     std::cerr << "Unknown output mode: " << outputMode << std::endl;
     std::remove(tmpTokenFile.c_str());
+    std::remove(tmpCObjectsFile.c_str());
     return 1;
   }
 
   std::remove(tmpTokenFile.c_str());
+  std::remove(tmpCObjectsFile.c_str());
 
   std::cout << "Compilation complete!" << std::endl;
   if (outputMode == "--exe") {
-    std::cout << "Run with: ./" << outputFile << std::endl;
+    std::cout << "Run with:" << outputFile << std::endl;
   }
 
   return 0;

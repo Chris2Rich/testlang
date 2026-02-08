@@ -1,0 +1,6 @@
+// Test import functionality
+import "math"
+importc "./libraries/io"
+
+// Loop that echoes 2x the input
+? loop 0 ; math.double io.input _(loop)
