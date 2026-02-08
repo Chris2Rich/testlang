@@ -1017,8 +1017,17 @@ int main(int argc, char *argv[]) {
 
   std::string tmpTokenFile = "tmp_tokens.txt";
   std::string tmpCObjectsFile = "tmp_c_objects.txt";
+  
+  // Get the base directory of the source file
+  std::string baseDir = ".";
+  size_t lastSlash = sourceFile.find_last_of("/\\");
+  if (lastSlash != std::string::npos) {
+    baseDir = sourceFile.substr(0, lastSlash);
+  }
+  
   std::string lexerCommand = "python3 \"" + lexerPath + "\" \"" + sourceFile +
-                             "\" \"" + tmpTokenFile + "\" --c-objects=\"" + tmpCObjectsFile + "\"";
+                             "\" \"" + tmpTokenFile + "\" --c-objects=\"" + tmpCObjectsFile + 
+                             "\" --base-dir=\"" + baseDir + "\"";
 
   std::cout << "Running lexer: " << lexerCommand << std::endl;
   int lexerResult = std::system(lexerCommand.c_str());

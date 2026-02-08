@@ -470,9 +470,16 @@ def cleanup_eof_tokens(token_stream):
     return non_eof
 
 
+# Global variable for base import directory
+_base_import_dir = "."
+
 def get_search_paths():
     """Get the list of paths to search for modules."""
     paths = []
+    # First check base import directory
+    global _base_import_dir
+    if _base_import_dir:
+        paths.append(_base_import_dir)
     # Check TESTLANG_PATH environment variable
     testlang_path = os.environ.get('TESTLANG_PATH', '')
     if testlang_path:
@@ -494,6 +501,14 @@ def find_module_file(module_name):
 
 def find_c_module_file(module_name):
     """Find a C object file in the search paths."""
+    # Handle relative paths starting with ./ or ../
+    global _base_import_dir
+    if module_name.startswith('./') or module_name.startswith('../'):
+        full_path = os.path.normpath(os.path.join(_base_import_dir, module_name))
+        if os.path.isfile(full_path):
+            return full_path
+    
+    # Otherwise search in standard paths
     search_paths = get_search_paths()
     extensions = ['.o', '.a', '.so']
     prefixes = ['', 'lib']
@@ -744,7 +759,16 @@ def main():
     parser.add_argument("input", nargs='?', default="tests/features/array_parse.txt")
     parser.add_argument("output", nargs='?', default="out.txt")
     parser.add_argument("--c-objects", nargs='?', default=None, help="Output file for C object file paths")
+    parser.add_argument("--base-dir", nargs='?', default=None, help="Base directory for resolving relative imports")
     args = parser.parse_args()
+
+    # Set base directory for imports
+    global _base_import_dir
+    if args.base_dir:
+        _base_import_dir = args.base_dir
+    else:
+        # Default to current directory
+        _base_import_dir = "."
 
     print(f"Starting Processing. Input file is {args.input}")
 
