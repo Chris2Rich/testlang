@@ -1,13 +1,15 @@
-1
-? zero_case
+importc "./libraries/io"
+
+_(loop)
+
+io.input
+? zero
 0
-? one_case
-_(zero_case)
+? one
+_(zero)
 ; 556
-? end
+? loop
 
-_(one_case)
+_(one)
 ; 762
-? end
-
-_(end)
+? loop

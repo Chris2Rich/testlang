@@ -1,6 +1,6 @@
-val => 5
+importc "./libraries/io"
+
 factorial => * factorial - 1 . ? end - 1 .
 
-factorial val
 _(end)
-;
+? end 0 ; factorial io.input
