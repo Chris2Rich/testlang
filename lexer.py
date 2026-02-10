@@ -770,8 +770,6 @@ def main():
         # Default to current directory
         _base_import_dir = "."
 
-    print(f"Starting Processing. Input file is {args.input}")
-
     try:
         with open(args.input, "r") as i_file:
             source = i_file.read()
@@ -808,11 +806,7 @@ def main():
         if args.c_objects and c_objects:
             with open(args.c_objects, "w") as c_file:
                 for obj_path in c_objects:
-                    c_file.write(obj_path + "\n")
-            print(f"C object files written to {args.c_objects}")
-        
-        print(f"Processing complete. Output written to {args.output}")
-        
+                    c_file.write(obj_path + "\n")                
     except CircularImportError as e:
         print(f"Error: {e}")
         return 1

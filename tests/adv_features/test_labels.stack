@@ -2,14 +2,19 @@ importc "./libraries/io"
 
 _(loop)
 
-io.input
+. io.input
 ? zero
+?< less
 0
-? one
-_(zero)
+? greater
+_(less)
 ; 556
 ? loop
 
-_(one)
+_(greater)
 ; 762
+? loop
+
+_(zero)
+; 308
 ? loop

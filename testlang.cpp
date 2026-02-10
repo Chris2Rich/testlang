@@ -158,10 +158,6 @@ public:
     llvm::Function::Create(pushDoubleType, llvm::Function::ExternalLinkage,
                            "push_double", module.get());
 
-    auto popDoubleType = llvm::FunctionType::get(doubleType, {}, false);
-    llvm::Function::Create(popDoubleType, llvm::Function::ExternalLinkage,
-                           "pop_double", module.get());
-
     auto simpleVoidType = llvm::FunctionType::get(voidType, {}, false);
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "push_shape", module.get());
@@ -245,6 +241,12 @@ public:
 
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "expand_top", module.get());
+
+    llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
+                           "do_where", module.get());
+
+    llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
+                           "do_index", module.get());
 
     auto mallocType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
     llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage,
@@ -598,6 +600,12 @@ public:
       } else if (token.value == "transpose") {
         auto transposeFunc = module->getFunction("transpose_top");
         builder->CreateCall(transposeFunc, {});
+      } else if (token.value == "where") {
+        auto Func = module->getFunction("do_where");
+        builder->CreateCall(Func, {});
+      } else if (token.value == "where") {
+        auto Func = module->getFunction("do_index");
+        builder->CreateCall(Func, {});
       } else {
         auto func = functions.find(token.value);
         if (func != functions.end()) {

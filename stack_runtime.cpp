@@ -629,4 +629,114 @@ double check_less_zero_pop() {
   delete v;
   return result;
 }
+
+void do_where() {
+  if (valueStack.size() < 3) {
+    std::cerr << "Runtime Error: where requires 3 inputs" << std::endl;
+    return;
+  }
+
+  // Pop in reverse order of stack (top first)
+  Value *truth_values = valueStack.top();
+  valueStack.pop();
+  Value *true_case = valueStack.top();
+  valueStack.pop();
+  Value *false_case = valueStack.top();
+  valueStack.pop();
+
+  // Get shapes (empty for scalars)
+  std::vector<long> tv_shape = truth_values->is_array ? truth_values->shape : std::vector<long>{};
+  std::vector<long> tc_shape = true_case->is_array ? true_case->shape : std::vector<long>{};
+  std::vector<long> fc_shape = false_case->is_array ? false_case->shape : std::vector<long>{};
+
+  // Check if all pairs are broadcastable
+  if (!Value::are_broadcastable(tv_shape, tc_shape) ||
+      !Value::are_broadcastable(tv_shape, fc_shape) ||
+      !Value::are_broadcastable(tc_shape, fc_shape)) {
+    std::cerr << "Runtime Error: Shapes not broadcastable for where" << std::endl;
+    delete truth_values;
+    delete true_case;
+    delete false_case;
+    return;
+  }
+
+  // Compute common broadcast shape for all three
+  std::vector<long> result_shape = tv_shape;
+  result_shape = Value::broadcast_shape(result_shape, tc_shape);
+  result_shape = Value::broadcast_shape(result_shape, fc_shape);
+
+  long result_size = std::accumulate(result_shape.begin(), result_shape.end(),
+                                     1, std::multiplies<long>());
+  double *result_data = (double *)malloc(sizeof(double) * result_size);
+
+  for (long i = 0; i < result_size; ++i) {
+    // Convert flat index to multi-dimensional indices
+    std::vector<long> indices(result_shape.size());
+    long temp = i;
+    for (long j = result_shape.size() - 1; j >= 0; --j) {
+      indices[j] = temp % result_shape[j];
+      temp /= result_shape[j];
+    }
+
+    // Calculate indices for each operand
+    long tv_idx = 0;
+    if (truth_values->is_array) {
+      std::vector<long> tv_indices(tv_shape.size());
+      long offset = result_shape.size() - tv_shape.size();
+      for (long j = 0; j < tv_shape.size(); ++j) {
+        long idx = j + offset;
+        tv_indices[j] = indices[idx] % tv_shape[j];
+      }
+      tv_idx = truth_values->to_flat_index(tv_indices);
+    }
+
+    long tc_idx = 0;
+    if (true_case->is_array) {
+      std::vector<long> tc_indices(tc_shape.size());
+      long offset = result_shape.size() - tc_shape.size();
+      for (long j = 0; j < tc_shape.size(); ++j) {
+        long idx = j + offset;
+        tc_indices[j] = indices[idx] % tc_shape[j];
+      }
+      tc_idx = true_case->to_flat_index(tc_indices);
+    }
+
+    long fc_idx = 0;
+    if (false_case->is_array) {
+      std::vector<long> fc_indices(fc_shape.size());
+      long offset = result_shape.size() - fc_shape.size();
+      for (long j = 0; j < fc_shape.size(); ++j) {
+        long idx = j + offset;
+        fc_indices[j] = indices[idx] % fc_shape[j];
+      }
+      fc_idx = false_case->to_flat_index(fc_indices);
+    }
+
+    // Apply where condition
+    double tv = truth_values->get_element(tv_idx);
+    if (tv != 0.0) {
+      result_data[i] = true_case->get_element(tc_idx);
+    } else {
+      result_data[i] = false_case->get_element(fc_idx);
+    }
+  }
+
+  if (result_size == 1) {
+    valueStack.push(new Value(result_data[0]));
+  } else {
+    valueStack.push(new Value(result_shape, result_data));
+  }
+
+  free(result_data);
+  delete truth_values;
+  delete true_case;
+  delete false_case;
+}
+
+void do_index() {
+  if (valueStack.size() < 2) {
+    std::cerr << "Runtime Error: index requires 2 inputs" << std::endl;
+    return;
+  }
+}
 }
