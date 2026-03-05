@@ -1,4 +1,4 @@
-import.c "./libraries/io"
+importc "./libraries/io"
 
 _(loop)
 

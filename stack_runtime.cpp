@@ -453,7 +453,7 @@ void do_iota_n() {
   valueStack.pop();
 
   if (!shapeArray->is_array) {
-    std::cerr << "Runtime Error: iota requires an array for the target shape"
+    std::cerr << "Runtime Error: iota_n requires an array for the target shape"
               << std::endl;
     delete shapeArray;
     return;
@@ -738,5 +738,142 @@ void do_index() {
     std::cerr << "Runtime Error: index requires 2 inputs" << std::endl;
     return;
   }
+
+  Value *index_val = valueStack.top();
+  valueStack.pop();
+  Value *target_array = valueStack.top();
+  valueStack.pop();
+
+  // Handle the case where target_array is a scalar (not an array)
+  if (!target_array->is_array) {
+    // If target is scalar, we can only index with scalar 0
+    if (!index_val->is_array) {
+      if (index_val->data[0] == 0.0) {
+        // Push the scalar value itself
+        valueStack.push(new Value(target_array->data[0]));
+      } else {
+        std::cerr << "Runtime Error: Invalid index for scalar value" << std::endl;
+        valueStack.push(target_array);
+        valueStack.push(index_val);
+      }
+    } else {
+      std::cerr << "Runtime Error: Cannot index scalar with array" << std::endl;
+      valueStack.push(target_array);
+      valueStack.push(index_val);
+    }
+    delete index_val;
+    return;
+  }
+
+  // Target is an array, handle indexing
+  if (!index_val->is_array) {
+    // Single index for 1D array
+    if (target_array->shape.size() == 1) {
+      long idx = static_cast<long>(index_val->data[0]);
+      if (idx >= 0 && idx < target_array->shape[0]) {
+        valueStack.push(new Value(target_array->data[idx]));
+      } else {
+        std::cerr << "Runtime Error: Index out of bounds" << std::endl;
+        valueStack.push(target_array);
+        valueStack.push(index_val);
+      }
+    } else {
+      std::cerr << "Runtime Error: Cannot use scalar index on multi-dimensional array" << std::endl;
+      valueStack.push(target_array);
+      valueStack.push(index_val);
+    }
+  } else {
+    // Array of indices for multi-dimensional array
+    if (index_val->shape.size() != 1) {
+      std::cerr << "Runtime Error: Index must be 1D array" << std::endl;
+      valueStack.push(target_array);
+      valueStack.push(index_val);
+    } else if (index_val->shape[0] != target_array->shape.size()) {
+      std::cerr << "Runtime Error: Number of indices doesn't match array dimensions" << std::endl;
+      valueStack.push(target_array);
+      valueStack.push(index_val);
+    } else {
+      // Convert indices to vector
+      std::vector<long> indices(index_val->shape[0]);
+      bool valid = true;
+      for (long i = 0; i < index_val->shape[0]; ++i) {
+        long idx = static_cast<long>(index_val->data[i]);
+        if (idx < 0 || idx >= target_array->shape[i]) {
+          valid = false;
+          break;
+        }
+        indices[i] = idx;
+      }
+
+      if (valid) {
+        long flat_idx = target_array->to_flat_index(indices);
+        valueStack.push(new Value(target_array->data[flat_idx]));
+      } else {
+        std::cerr << "Runtime Error: Index out of bounds" << std::endl;
+        valueStack.push(target_array);
+        valueStack.push(index_val);
+      }
+    }
+  }
+
+  delete index_val;
+  delete target_array;
+}
+
+void do_rotate() {
+  if (valueStack.size() < 2) {
+    std::cerr << "Runtime Error: rotate requires 2 inputs" << std::endl;
+    return;
+  }
+
+  Value *m_val = valueStack.top();
+  valueStack.pop();
+  Value *n_val = valueStack.top();
+  valueStack.pop();
+
+  if (!m_val->is_array && !n_val->is_array) {
+    long n = static_cast<long>(n_val->data[0]);
+    long m = static_cast<long>(m_val->data[0]);
+
+    if (n <= 0) {
+      std::cerr << "Runtime Error: Number of elements to rotate must be positive" << std::endl;
+      valueStack.push(n_val);
+      valueStack.push(m_val);
+    } else if (n > static_cast<long>(valueStack.size())) {
+      std::cerr << "Runtime Error: Cannot rotate more elements than available in stack" << std::endl;
+      valueStack.push(n_val);
+      valueStack.push(m_val);
+    } else {
+      // Normalize m to be within [0, n)
+      m = ((m % n) + n) % n;
+
+      if (m > 0) {
+        // Extract top n elements
+        std::vector<Value*> elements;
+        elements.reserve(n);
+        
+        for (long i = 0; i < n; ++i) {
+          elements.push_back(valueStack.top());
+          valueStack.pop();
+        }
+
+        // Rotate right by m positions
+        // Right rotation by m = left rotation by (n - m)
+        std::rotate(elements.begin(), elements.begin() + (n - m), elements.end());
+
+        // Push back to stack
+        for (long i = 0; i < n; ++i) {
+          valueStack.push(elements[i]);
+        }
+      }
+    }
+  } else {
+    std::cerr << "Runtime Error: rotate requires scalar arguments" << std::endl;
+    valueStack.push(n_val);
+    valueStack.push(m_val);
+  }
+
+  delete m_val;
+  delete n_val;
 }
 }

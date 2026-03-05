@@ -248,6 +248,9 @@ public:
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_index", module.get());
 
+    llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
+                           "do_rotate", module.get());
+
     auto mallocType = llvm::FunctionType::get(int8PtrType, {int64Type}, false);
     llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage,
                            "runtime_malloc", module.get());
@@ -603,10 +606,15 @@ public:
       } else if (token.value == "where") {
         auto Func = module->getFunction("do_where");
         builder->CreateCall(Func, {});
-      } else if (token.value == "where") {
+      } else if (token.value == "index") {
         auto Func = module->getFunction("do_index");
         builder->CreateCall(Func, {});
-      } else {
+      }
+      else if (token.value == "rotate") {
+        auto Func = module->getFunction("do_rotate");
+        builder->CreateCall(Func, {});
+      }
+      else {
         auto func = functions.find(token.value);
         if (func != functions.end()) {
           builder->CreateCall(func->second, {});
