@@ -844,9 +844,9 @@ void do_rotate() {
     return;
   }
 
-  Value *m_val = valueStack.top();
-  valueStack.pop();
   Value *n_val = valueStack.top();
+  valueStack.pop();
+  Value *m_val = valueStack.top();
   valueStack.pop();
 
   if (!m_val->is_array && !n_val->is_array) {

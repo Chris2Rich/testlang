@@ -1,0 +1,20 @@
+importc "./libraries/io"
+_(entry)
+1 0 - 1 io.input
+
+_(loop)
+rotate 3 2
+.
+?< end
+1
+-
+rotate 3 1
+.
+rotate 3 2
++
+? loop 0
+
+_(end)
+pop ; pop
+
+? entry 0
