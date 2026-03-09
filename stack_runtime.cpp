@@ -277,7 +277,6 @@ void reshape_top(long ndim, long *new_shape) {
   if (new_size != val->total_size) {
     std::cerr << "Runtime Error: Cannot reshape array with different total size"
               << std::endl;
-    valueStack.push(val);
     return;
   }
 
@@ -490,8 +489,6 @@ void do_reshape() {
 
   if (!shapeArray->is_array) {
     std::cerr << "Runtime Error: reshape requires an array for the target shape" << std::endl;
-    valueStack.push(dataArray);
-    valueStack.push(shapeArray);
     return;
   }
 
@@ -504,8 +501,6 @@ void do_reshape() {
 
   if (new_size != dataArray->total_size) {
     std::cerr << "Runtime Error: Cannot reshape array with different total size" << std::endl;
-    valueStack.push(dataArray);
-    valueStack.push(shapeArray);
     return;
   }
 
@@ -746,74 +741,97 @@ void do_index() {
 
   // Handle the case where target_array is a scalar (not an array)
   if (!target_array->is_array) {
-    // If target is scalar, we can only index with scalar 0
     if (!index_val->is_array) {
       if (index_val->data[0] == 0.0) {
-        // Push the scalar value itself
         valueStack.push(new Value(target_array->data[0]));
       } else {
-        std::cerr << "Runtime Error: Invalid index for scalar value" << std::endl;
-        valueStack.push(target_array);
-        valueStack.push(index_val);
+        std::cerr << "Runtime Error: Invalid index for scalar value"
+                  << std::endl;
       }
     } else {
       std::cerr << "Runtime Error: Cannot index scalar with array" << std::endl;
-      valueStack.push(target_array);
-      valueStack.push(index_val);
     }
     delete index_val;
+    delete target_array; // Fixed memory leak
     return;
   }
 
-  // Target is an array, handle indexing
+  // Extract provided indices into a vector
+  std::vector<long> indices;
   if (!index_val->is_array) {
-    // Single index for 1D array
-    if (target_array->shape.size() == 1) {
-      long idx = static_cast<long>(index_val->data[0]);
-      if (idx >= 0 && idx < target_array->shape[0]) {
-        valueStack.push(new Value(target_array->data[idx]));
-      } else {
-        std::cerr << "Runtime Error: Index out of bounds" << std::endl;
-        valueStack.push(target_array);
-        valueStack.push(index_val);
-      }
-    } else {
-      std::cerr << "Runtime Error: Cannot use scalar index on multi-dimensional array" << std::endl;
-      valueStack.push(target_array);
-      valueStack.push(index_val);
-    }
+    indices.push_back(static_cast<long>(index_val->data[0]));
   } else {
-    // Array of indices for multi-dimensional array
     if (index_val->shape.size() != 1) {
-      std::cerr << "Runtime Error: Index must be 1D array" << std::endl;
-      valueStack.push(target_array);
-      valueStack.push(index_val);
-    } else if (index_val->shape[0] != target_array->shape.size()) {
-      std::cerr << "Runtime Error: Number of indices doesn't match array dimensions" << std::endl;
-      valueStack.push(target_array);
-      valueStack.push(index_val);
-    } else {
-      // Convert indices to vector
-      std::vector<long> indices(index_val->shape[0]);
-      bool valid = true;
-      for (long i = 0; i < index_val->shape[0]; ++i) {
-        long idx = static_cast<long>(index_val->data[i]);
-        if (idx < 0 || idx >= target_array->shape[i]) {
-          valid = false;
-          break;
-        }
-        indices[i] = idx;
-      }
-
-      if (valid) {
-        long flat_idx = target_array->to_flat_index(indices);
-        valueStack.push(new Value(target_array->data[flat_idx]));
-      } else {
-        std::cerr << "Runtime Error: Index out of bounds" << std::endl;
-        valueStack.push(target_array);
-        valueStack.push(index_val);
-      }
+      std::cerr << "Runtime Error: Index must be a 1D array" << std::endl;
+      delete index_val;
+      delete target_array;
+      return;
     }
+    for (long i = 0; i < index_val->shape[0]; ++i) {
+      indices.push_back(static_cast<long>(index_val->data[i]));
+    }
+  }
+
+  // Check if we provided too many indices
+  if (indices.size() > target_array->shape.size()) {
+    std::cerr << "Runtime Error: Number of indices exceeds array dimensions"
+              << std::endl;
+    delete index_val;
+    delete target_array;
+    return;
+  }
+
+  // Validate that all provided indices are within array bounds
+  bool valid = true;
+  for (size_t i = 0; i < indices.size(); ++i) {
+    if (indices[i] < 0 || indices[i] >= target_array->shape[i]) {
+      valid = false;
+      break;
+    }
+  }
+
+  if (!valid) {
+    std::cerr << "Runtime Error: Index out of bounds" << std::endl;
+    delete index_val;
+    delete target_array;
+    return;
+  }
+
+  // Calculate the shape and total size of the resulting slice
+  std::vector<long> result_shape(target_array->shape.begin() + indices.size(),
+                                 target_array->shape.end());
+
+  long result_size = 1;
+  for (long dim : result_shape) {
+    result_size *= dim;
+  }
+
+  // Calculate flat offset inside the target_array
+  long flat_offset = 0;
+  if (!target_array->shape.empty()) {
+    // Compute strides for each dimension
+    std::vector<long> strides(target_array->shape.size(), 1);
+    for (long i = static_cast<long>(target_array->shape.size()) - 2; i >= 0;
+         --i) {
+      strides[i] = strides[i + 1] * target_array->shape[i + 1];
+    }
+
+    for (size_t i = 0; i < indices.size(); ++i) {
+      flat_offset += indices[i] * strides[i];
+    }
+  }
+
+  if (result_shape.empty()) {
+    // Fully indexed: return a single scalar element
+    valueStack.push(new Value(target_array->data[flat_offset]));
+  } else {
+    // Partially indexed: return a multi-dimensional array slice
+    double *result_data = (double *)malloc(sizeof(double) * result_size);
+    std::memcpy(result_data, target_array->data + flat_offset,
+                sizeof(double) * result_size);
+
+    valueStack.push(new Value(result_shape, result_data));
+    free(result_data);
   }
 
   delete index_val;
@@ -836,41 +854,40 @@ void do_rotate() {
     long m = static_cast<long>(m_val->data[0]);
 
     if (n <= 0) {
-      std::cerr << "Runtime Error: Number of elements to rotate must be positive" << std::endl;
-      valueStack.push(n_val);
-      valueStack.push(m_val);
+      std::cerr
+          << "Runtime Error: Number of elements to rotate must be positive"
+          << std::endl;
     } else if (n > static_cast<long>(valueStack.size())) {
-      std::cerr << "Runtime Error: Cannot rotate more elements than available in stack" << std::endl;
-      valueStack.push(n_val);
-      valueStack.push(m_val);
+      std::cerr << "Runtime Error: Cannot rotate more elements than available "
+                   "in stack"
+                << std::endl;
     } else {
-      // Normalize m to be within [0, n)
-      m = ((m % n) + n) % n;
+      // Normalize m to be strictly positive and within[0, n)
+      m %= n;
+      if (m < 0) {
+        m += n;
+      }
 
       if (m > 0) {
         // Extract top n elements
-        std::vector<Value*> elements;
+        std::vector<Value *> elements;
         elements.reserve(n);
-        
+
         for (long i = 0; i < n; ++i) {
           elements.push_back(valueStack.top());
           valueStack.pop();
         }
 
-        // Rotate right by m positions
-        // Right rotation by m = left rotation by (n - m)
-        std::rotate(elements.begin(), elements.begin() + (n - m), elements.end());
-
-        // Push back to stack
-        for (long i = 0; i < n; ++i) {
-          valueStack.push(elements[i]);
+        // Push back to stack in reverse order to maintain correct stack
+        // semantics By correctly offsetting with m, we execute a perfect cyclic
+        // stack rotation
+        for (long i = n - 1; i >= 0; --i) {
+          valueStack.push(elements[(i + m) % n]);
         }
       }
     }
   } else {
     std::cerr << "Runtime Error: rotate requires scalar arguments" << std::endl;
-    valueStack.push(n_val);
-    valueStack.push(m_val);
   }
 
   delete m_val;
