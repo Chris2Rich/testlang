@@ -1,0 +1,1 @@
+? entry 0 pop ; pop _(end) ? loop 0 + rotate 3 2 . rotate 3 1 - 1 ?< end . rotate 3 2 _(loop) 1 0 - 1 io.input _(entry) importc "./libraries/io"
