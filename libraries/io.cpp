@@ -7,6 +7,7 @@
 #include <stack>
 #include <fstream>
 #include <regex>
+#include <time.h>
 #include "../stack_runtime.h"
 
 
@@ -103,10 +104,23 @@ void input() {
     size_t last = line.find_last_not_of(" \t\n\r");
     std::string trimmed = line.substr(first, last - first + 1);
 
-    // Write to temp file
-    const char* tempInput = "/tmp/testlang_io_input.tmp";
-    const char* tempTokens = "/tmp/testlang_io_tokens.tmp";
-    
+    // Write to temp file, we use a random seed based on the current time in
+    // order to make sure that we have multiple files,
+    // thus we can input from multiple programs at once
+    time_t now;
+    time(&now);
+    srand(now);
+
+    long buffer = random();
+    const char *tempInput = std::string("/tmp/testlang_io_input")
+                                .append(std::to_string(buffer))
+                                .append(".tmp")
+                                .data();
+    const char *tempTokens = std::string("/tmp/testlang_io_tokens")
+                                .append(std::to_string(buffer))
+                                .append(".tmp")
+                                .data();
+
     std::ofstream ofs(tempInput);
     ofs << trimmed;
     ofs.close();

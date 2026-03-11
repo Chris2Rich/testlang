@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# build.sh - Build script for Stack Language Compiler
+# build.sh - Build script for Testlang Compiler
 
 set -e
 
-echo "Building Stack Language Compiler..."
+echo "Building Testlang Compiler..."
 
 # Check if LLVM is installed
 if ! command -v llvm-config &> /dev/null; then
