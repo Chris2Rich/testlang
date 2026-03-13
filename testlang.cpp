@@ -1031,9 +1031,18 @@ int main(int argc, char *argv[]) {
 
   std::cout << "Compiling Stack Language source: " << sourceFile << std::endl;
 
-  std::string tmpTokenFile = "tmp_tokens.txt";
-  std::string tmpCObjectsFile = "tmp_c_objects.txt";
-  
+  time_t now;
+  time(&now);
+  srand(now);
+
+  long buffer = random();
+  std::string tmpTokenFile = std::string("/tmp/testlang_tokens")
+                                 .append(std::to_string(buffer))
+                                 .append(".tmp");
+  std::string tmpCObjectsFile = std::string("/tmp/testlang_cobj")
+                                    .append(std::to_string(buffer))
+                                    .append(".tmp");
+
   // Get the base directory of the source file
   std::string baseDir = ".";
   size_t lastSlash = sourceFile.find_last_of("/\\");
