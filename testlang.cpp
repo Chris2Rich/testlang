@@ -107,7 +107,7 @@ private:
   llvm::Type *int64Type;
 
   std::unordered_map<std::string, llvm::Function *> functions;
-  
+
   // For labels and conditional branches
   std::unordered_map<std::string, llvm::BasicBlock *> labels;
   llvm::Function *currentFunc;
@@ -165,11 +165,11 @@ public:
     auto checkZeroType = llvm::FunctionType::get(doubleType, {}, false);
     llvm::Function::Create(checkZeroType, llvm::Function::ExternalLinkage,
                            "check_zero_pop", module.get());
-    
+
     auto checkLessZeroType = llvm::FunctionType::get(doubleType, {}, false);
     llvm::Function::Create(checkLessZeroType, llvm::Function::ExternalLinkage,
                            "check_less_zero_pop", module.get());
-    
+
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
                            "do_band", module.get());
     llvm::Function::Create(simpleVoidType, llvm::Function::ExternalLinkage,
@@ -538,10 +538,11 @@ public:
         if (func != functions.end()) {
           builder->CreateCall(func->second, {});
         } else {
-          // It's an external function (from C module) - extract function name after dot
+          // It's an external function (from C module) - extract function name
+          // after dot
           size_t dot_pos = token.value.find('.');
           std::string func_name = token.value.substr(dot_pos + 1);
-          
+
           // Check if already declared
           auto existing = module->getFunction(func_name);
           if (existing) {
@@ -551,7 +552,8 @@ public:
             auto voidType = llvm::Type::getVoidTy(context);
             auto funcType = llvm::FunctionType::get(voidType, {}, false);
             auto extFunc = llvm::Function::Create(
-                funcType, llvm::Function::ExternalLinkage, func_name, module.get());
+                funcType, llvm::Function::ExternalLinkage, func_name,
+                module.get());
             builder->CreateCall(extFunc, {});
           }
         }
@@ -609,12 +611,10 @@ public:
       } else if (token.value == "index") {
         auto Func = module->getFunction("do_index");
         builder->CreateCall(Func, {});
-      }
-      else if (token.value == "rotate") {
+      } else if (token.value == "rotate") {
         auto Func = module->getFunction("do_rotate");
         builder->CreateCall(Func, {});
-      }
-      else {
+      } else {
         auto func = functions.find(token.value);
         if (func != functions.end()) {
           builder->CreateCall(func->second, {});
@@ -710,7 +710,8 @@ public:
     // First pass: Collect all labels and create basic blocks
     for (const auto &token : proceduralTokens) {
       if (token.type == TokenType::LABEL) {
-        labels[token.value] = llvm::BasicBlock::Create(context, token.value, currentFunc);
+        labels[token.value] =
+            llvm::BasicBlock::Create(context, token.value, currentFunc);
       }
     }
 
@@ -775,7 +776,6 @@ public:
     builder->CreateRetVoid();
     builder->SetInsertPoint(oldInsertPoint);
     currentFunc = oldCurrentFunc;
-
   }
 
   void generateLLVMIR(const std::string &filename) {
@@ -1049,10 +1049,11 @@ int main(int argc, char *argv[]) {
   if (lastSlash != std::string::npos) {
     baseDir = sourceFile.substr(0, lastSlash);
   }
-  
+
   std::string lexerCommand = "python3 \"" + lexerPath + "\" \"" + sourceFile +
-                             "\" \"" + tmpTokenFile + "\" --c-objects=\"" + tmpCObjectsFile + 
-                             "\" --base-dir=\"" + baseDir + "\"";
+                             "\" \"" + tmpTokenFile + "\" --c-objects=\"" +
+                             tmpCObjectsFile + "\" --base-dir=\"" + baseDir +
+                             "\"";
 
   std::cout << "Running lexer: " << lexerCommand << std::endl;
   int lexerResult = std::system(lexerCommand.c_str());
@@ -1122,10 +1123,11 @@ int main(int argc, char *argv[]) {
     std::cout << "Object file generated: " << outputFile << ".o" << std::endl;
   } else if (outputMode == "--exe") {
     std::string extraObjects;
-    for (const auto& obj : cObjectFiles) {
+    for (const auto &obj : cObjectFiles) {
       extraObjects += " " + obj;
     }
-    compiler.generateExecutable(outputFile, "./libstack_runtime.a" + extraObjects);
+    compiler.generateExecutable(outputFile,
+                                "./libstack_runtime.a" + extraObjects);
     std::cout << "Executable generated: " << outputFile << std::endl;
   } else {
     std::cerr << "Unknown output mode: " << outputMode << std::endl;

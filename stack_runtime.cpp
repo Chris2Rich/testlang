@@ -1,3 +1,4 @@
+#include "stack_runtime.h"
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -6,7 +7,6 @@
 #include <numeric>
 #include <stack>
 #include <vector>
-#include "stack_runtime.h"
 
 std::stack<Value *> valueStack;
 
@@ -34,7 +34,8 @@ void push_shape() {
     // Scalar has empty shape - represented as an empty array
     // Here we push an array of shape [0] which means it has 0 elements
     // and is 1-dimensional? No, shape of scalar is usually empty.
-    // If we want to return the shape as an array, for a scalar it's an empty array.
+    // If we want to return the shape as an array, for a scalar it's an empty
+    // array.
     std::vector<long> sh = {0};
     valueStack.push(new Value(sh, nullptr));
   } else {
@@ -307,7 +308,6 @@ void pop() {
   }
 
   valueStack.pop();
-
 }
 
 void band_op(double a, double b, double *result) {
@@ -375,7 +375,8 @@ void do_atan() { unary_op(atan_op); }
 
 void do_iota() {
   if (valueStack.size() < 2) {
-    std::cerr << "Runtime Error: iota requires 2 arguments (shape and filler)" << std::endl;
+    std::cerr << "Runtime Error: iota requires 2 arguments (shape and filler)"
+              << std::endl;
     return;
   }
 
@@ -387,7 +388,8 @@ void do_iota() {
   valueStack.pop();
 
   if (!shapeArray->is_array) {
-    std::cerr << "Runtime Error: iota requires an array for the target shape" << std::endl;
+    std::cerr << "Runtime Error: iota requires an array for the target shape"
+              << std::endl;
     delete filler;
     delete shapeArray;
     return;
@@ -398,10 +400,12 @@ void do_iota() {
     target_shape.push_back(static_cast<long>(shapeArray->data[i]));
   }
 
-  std::vector<long> filler_shape = filler->is_array ? filler->shape : std::vector<long>{};
+  std::vector<long> filler_shape =
+      filler->is_array ? filler->shape : std::vector<long>{};
 
   if (!Value::are_broadcastable(filler_shape, target_shape)) {
-    std::cerr << "Runtime Error: Filler not broadcastable to target shape" << std::endl;
+    std::cerr << "Runtime Error: Filler not broadcastable to target shape"
+              << std::endl;
     delete filler;
     delete shapeArray;
     return;
@@ -478,7 +482,8 @@ void do_iota_n() {
 
 void do_reshape() {
   if (valueStack.size() < 2) {
-    std::cerr << "Runtime Error: reshape requires 2 arguments (shape and data)" << std::endl;
+    std::cerr << "Runtime Error: reshape requires 2 arguments (shape and data)"
+              << std::endl;
     return;
   }
 
@@ -488,7 +493,8 @@ void do_reshape() {
   valueStack.pop();
 
   if (!shapeArray->is_array) {
-    std::cerr << "Runtime Error: reshape requires an array for the target shape" << std::endl;
+    std::cerr << "Runtime Error: reshape requires an array for the target shape"
+              << std::endl;
     return;
   }
 
@@ -497,10 +503,12 @@ void do_reshape() {
     target_shape.push_back(static_cast<long>(shapeArray->data[i]));
   }
 
-  long new_size = std::accumulate(target_shape.begin(), target_shape.end(), 1, std::multiplies<long>());
+  long new_size = std::accumulate(target_shape.begin(), target_shape.end(), 1,
+                                  std::multiplies<long>());
 
   if (new_size != dataArray->total_size) {
-    std::cerr << "Runtime Error: Cannot reshape array with different total size" << std::endl;
+    std::cerr << "Runtime Error: Cannot reshape array with different total size"
+              << std::endl;
     return;
   }
 
@@ -640,15 +648,19 @@ void do_where() {
   valueStack.pop();
 
   // Get shapes (empty for scalars)
-  std::vector<long> tv_shape = truth_values->is_array ? truth_values->shape : std::vector<long>{};
-  std::vector<long> tc_shape = true_case->is_array ? true_case->shape : std::vector<long>{};
-  std::vector<long> fc_shape = false_case->is_array ? false_case->shape : std::vector<long>{};
+  std::vector<long> tv_shape =
+      truth_values->is_array ? truth_values->shape : std::vector<long>{};
+  std::vector<long> tc_shape =
+      true_case->is_array ? true_case->shape : std::vector<long>{};
+  std::vector<long> fc_shape =
+      false_case->is_array ? false_case->shape : std::vector<long>{};
 
   // Check if all pairs are broadcastable
   if (!Value::are_broadcastable(tv_shape, tc_shape) ||
       !Value::are_broadcastable(tv_shape, fc_shape) ||
       !Value::are_broadcastable(tc_shape, fc_shape)) {
-    std::cerr << "Runtime Error: Shapes not broadcastable for where" << std::endl;
+    std::cerr << "Runtime Error: Shapes not broadcastable for where"
+              << std::endl;
     delete truth_values;
     delete true_case;
     delete false_case;
