@@ -1,6 +1,9 @@
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar/NewGVN.h"
 #include "llvm/Transforms/Scalar/Reassociate.h"
@@ -91,7 +94,7 @@ struct Token {
       : value(v), type(t), shape(sh), data(dt) {}
 };
 
-class StackLangCompiler {
+class TestLangCompiler {
 private:
   std::vector<llvm::Value *> compileTimeStack;
 
@@ -113,8 +116,8 @@ private:
   llvm::Function *currentFunc;
 
 public:
-  StackLangCompiler() : builder(std::make_unique<llvm::IRBuilder<>>(context)) {
-    module = std::make_unique<llvm::Module>("StackLang", context);
+  TestLangCompiler() : builder(std::make_unique<llvm::IRBuilder<>>(context)) {
+    module = std::make_unique<llvm::Module>("Testlang", context);
 
     doubleType = llvm::Type::getDoubleTy(context);
     int32Type = llvm::Type::getInt32Ty(context);
@@ -852,7 +855,17 @@ public:
     }
   }
 
-  void optimize() {
+  bool linkRuntime(const std::string &bitcodePath) {
+      auto BufferOrErr = llvm::MemoryBuffer::getFile(bitcodePath);
+      if (std::error_code ec = BufferOrErr.getError()) return false;
+
+      auto RuntimeModuleOrErr = llvm::parseBitcodeFile(BufferOrErr.get()->getMemBufferRef(), context);
+      if (!RuntimeModuleOrErr) return false;
+
+      return !llvm::Linker::linkModules(*module, std::move(RuntimeModuleOrErr.get()));
+  }
+
+  void optimise() {
     llvm::LoopAnalysisManager LAM;
     llvm::FunctionAnalysisManager FAM;
     llvm::CGSCCAnalysisManager CGAM;
@@ -1009,6 +1022,7 @@ int main(int argc, char *argv[]) {
   std::string outputFile = argv[2];
   std::string outputMode = (argc >= 4) ? argv[3] : "--exe";
   std::string lexerPath = (argc >= 5) ? argv[4] : "./lexer.py";
+  std::string runtimePath = (argc >= 6) ? argv[5] : "./stack_runtime.bc";
 
   std::ifstream sourceCheck(sourceFile);
   if (!sourceCheck.good()) {
@@ -1089,7 +1103,7 @@ int main(int argc, char *argv[]) {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  StackLangCompiler compiler;
+  TestLangCompiler compiler;
   compiler.compile(tokens);
 
   if (!compiler.verify()) {
@@ -1099,8 +1113,16 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  std::cout << "Module verified. Optimizing..." << std::endl;
-  compiler.optimize();
+  std::cout << "Linking runtime bitcode..." << std::endl;
+  if (!compiler.linkRuntime(runtimePath)) {
+    std::cerr << "Error: Failed to link " << runtimePath << "!" << std::endl;
+    std::remove(tmpTokenFile.c_str());
+    std::remove(tmpCObjectsFile.c_str());
+    return 1;
+  }
+
+  std::cout << "Module verified and linked. Optimizing..." << std::endl;
+  compiler.optimise();
 
   // Read C object files for linking
   std::vector<std::string> cObjectFiles;

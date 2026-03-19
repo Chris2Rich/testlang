@@ -26,10 +26,9 @@ clang++ -std=c++17 -O3 \
     $(llvm-config --cxxflags --ldflags --system-libs --libs core mcjit native) \
     -o testlang
 
-# Build the runtime library
-echo "Compiling runtime library..."
-clang++ -std=c++17 -O3 -fPIC -c stack_runtime.cpp -o stack_runtime.o
-ar rcs libstack_runtime.a stack_runtime.o
+# Build the runtime library as bitcode
+echo "Compiling runtime library to bitcode..."
+clang++ -std=c++17 -O3 -emit-llvm -c stack_runtime.cpp -o stack_runtime.bc
 
 echo "Build complete!"
 echo ""
