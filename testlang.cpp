@@ -36,6 +36,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <ostream>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -1003,18 +1004,29 @@ std::vector<Token> parseTokenFile(const std::string &filename) {
   return tokens;
 }
 
-int main(int argc, char *argv[]) {
-  if (argc < 3 || argc > 5) {
-    std::cerr << "Usage: " << argv[0]
+void print_help(std::ostream &os, char* localpath){
+      os << "Usage: " << localpath
               << " <source_file> <output> [--ir|--obj|--exe] [lexer_path]"
               << std::endl;
-    std::cerr << "  source_file: Stack language source file" << std::endl;
-    std::cerr << "  output:      Output file name" << std::endl;
-    std::cerr << "  --ir:        Generate LLVM IR (.ll file)" << std::endl;
-    std::cerr << "  --obj:       Generate object file (.o)" << std::endl;
-    std::cerr << "  --exe:       Generate executable (default)" << std::endl;
-    std::cerr << "  lexer_path:  Path to Python lexer (default: ./lexer.py)"
+    os << "  source_file: Stack language source file" << std::endl;
+    os << "  output:      Output file name" << std::endl;
+    os << "  --ir:        Generate LLVM IR (.ll file)" << std::endl;
+    os << "  --obj:       Generate object file (.o)" << std::endl;
+    os << "  --exe:       Generate executable (default)" << std::endl;
+    os << "  lexer_path:  Path to Python lexer (default: ./lexer.py)"
               << std::endl;
+    os << "  runtime_path:  Path to Runtime bitcode (default: ./stack_runtime.bc)"
+              << std::endl;
+  return;
+}
+
+int main(int argc, char *argv[]) {
+  if (argc <= 2 && argv[1] == "help"){
+    print_help(std::cout, argv[0])
+    return 0;
+  }
+  if (argc < 3 || argc > 6) {
+    print_help(std::cerr, argv[0])
     return 1;
   }
 
@@ -1042,6 +1054,17 @@ int main(int argc, char *argv[]) {
     return 1;
   }
   lexerCheck.close();
+
+  std::ifstream runtimeCheck(runtimePath);
+  if (!runtimeCheck.good()) {
+    std::cerr << "Error: Runtime bitcode file '" << runtimeCheck << "' not found!"
+              << std::endl;
+    std::cerr << "Make sure the Testlang runtime bitcode is in the current directory or "
+                 "specify its path."
+              << std::endl;
+    return 1;
+  }
+  runtimeCheck.close();
 
   std::cout << "Compiling Stack Language source: " << sourceFile << std::endl;
 
