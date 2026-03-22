@@ -32,8 +32,6 @@ void push_shape() {
 
   if (!a->is_array) {
     // Scalar has empty shape - represented as an empty array
-    // Here we push an array of shape [0] which means it has 0 elements
-    // and is 1-dimensional? No, shape of scalar is usually empty.
     // If we want to return the shape as an array, for a scalar it's an empty
     // array.
     std::vector<long> sh = {0};
