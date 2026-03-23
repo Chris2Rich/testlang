@@ -105,13 +105,13 @@ void input() {
   size_t last = line.find_last_not_of(" \t\n\r");
   std::string trimmed = line.substr(first, last - first + 1);
 
-  // FIX 1: Use clock_gettime for nanosecond precision to avoid same-second
+  // Use clock_gettime for nanosecond precision to avoid same-second
   // collisions
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   long buffer = (long)ts.tv_sec * 1000000000L + ts.tv_nsec;
 
-  // FIX 2: Store as std::string so the char* doesn't dangle
+  // Store as std::string
   std::string tempInput = std::string("/tmp/testlang_io_input")
                               .append(std::to_string(buffer))
                               .append(".tmp");
@@ -119,7 +119,7 @@ void input() {
                                .append(std::to_string(buffer))
                                .append(".tmp");
 
-  // FIX 3: RAII cleanup guard — runs on every exit path
+  //  RAII cleanup guard — runs on every exit path
   auto cleanup = [&]() {
     std::remove(tempInput.c_str());
     std::remove(tempTokens.c_str());

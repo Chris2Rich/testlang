@@ -1068,17 +1068,21 @@ int main(int argc, char *argv[]) {
 
   std::cout << "Compiling Stack Language source: " << sourceFile << std::endl;
 
-  time_t now;
-  time(&now);
-  srand(now);
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  long buffer = (long)ts.tv_sec * 1000000000L + ts.tv_nsec;
 
-  long buffer = random();
   std::string tmpTokenFile = std::string("/tmp/testlang_tokens")
                                  .append(std::to_string(buffer))
                                  .append(".tmp");
   std::string tmpCObjectsFile = std::string("/tmp/testlang_cobj")
                                     .append(std::to_string(buffer))
                                     .append(".tmp");
+
+  auto cleanup = [&]() {
+    std::remove(tmpTokenFile.c_str());
+    std::remove(tmpCObjectsFile.c_str());
+  };
 
   // Get the base directory of the source file
   std::string baseDir = ".";
@@ -1101,12 +1105,14 @@ int main(int argc, char *argv[]) {
     std::cerr
         << "Make sure Python 3 is installed and the lexer script is correct."
         << std::endl;
+    cleanup();
     return 1;
   }
 
   std::ifstream tokenCheck(tmpTokenFile);
   if (!tokenCheck.good()) {
     std::cerr << "Error: Lexer did not generate token file!" << std::endl;
+    cleanup();
     return 1;
   }
   tokenCheck.close();
@@ -1117,6 +1123,7 @@ int main(int argc, char *argv[]) {
 
   if (tokens.empty()) {
     std::cerr << "Error: No tokens parsed from " << tmpTokenFile << std::endl;
+    cleanup();
     return 1;
   }
 
@@ -1131,16 +1138,14 @@ int main(int argc, char *argv[]) {
 
   if (!compiler.verify()) {
     std::cerr << "Module verification failed!" << std::endl;
-    std::remove(tmpTokenFile.c_str());
-    std::remove(tmpCObjectsFile.c_str());
+    cleanup();
     return 1;
   }
 
   std::cout << "Linking runtime bitcode..." << std::endl;
   if (!compiler.linkRuntime(runtimePath)) {
     std::cerr << "Error: Failed to link " << runtimePath << "!" << std::endl;
-    std::remove(tmpTokenFile.c_str());
-    std::remove(tmpCObjectsFile.c_str());
+    cleanup();
     return 1;
   }
 
@@ -1176,13 +1181,11 @@ int main(int argc, char *argv[]) {
     std::cout << "Executable generated: " << outputFile << std::endl;
   } else {
     std::cerr << "Unknown output mode: " << outputMode << std::endl;
-    std::remove(tmpTokenFile.c_str());
-    std::remove(tmpCObjectsFile.c_str());
+    cleanup();
     return 1;
   }
 
-  std::remove(tmpTokenFile.c_str());
-  std::remove(tmpCObjectsFile.c_str());
+  cleanup();
 
   std::cout << "Compilation complete!" << std::endl;
   if (outputMode == "--exe") {
