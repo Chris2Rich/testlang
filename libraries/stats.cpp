@@ -7,7 +7,7 @@
 #include <vector>
 #include <cmath>
 
-static constexpr double epsilon = 1e-9;
+static constexpr double epsilon = 1e-12;
 
 // Helper: compute the slice size (product of all dims after the leading axis)
 static long slice_size(const Value *val) {

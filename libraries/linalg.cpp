@@ -90,8 +90,8 @@ struct Mat {
   }
 };
 
-static constexpr double LINALG_EPS = 1e-9; // near-zero threshold
-static constexpr int MAX_ITER = 1000;      // iteration cap for QR/SVD
+static constexpr double LINALG_EPS = 1e-12; // near-zero threshold
+static constexpr int MAX_ITER = 1000;       // iteration cap for QR/SVD
 
 // ============================================================================
 //  Validation helpers
@@ -197,13 +197,13 @@ static void qr_decompose(const Mat &A, Mat &Q, Mat &R) {
 //  Pushes: Q (m×n), then R (n×n) — R is on top
 // ============================================================================
 
-extern "C" void linalg_qr() {
+extern "C" void qrd() {
   if (valueStack.empty())
     return;
   Value *v = valueStack.top();
   valueStack.pop();
 
-  if (!require_2d(v, "linalg.qr")) {
+  if (!require_2d(v, "linalg.qrd")) {
     delete v;
     return;
   }
@@ -239,17 +239,22 @@ static Mat gaussian_echelon(const Mat &A, int &swap_count) {
   for (long col = 0; col < n && pivot_row < m; ++col) {
     // Find row with largest absolute value in this column (partial pivot)
     long best = pivot_row;
-    double best_val = std::abs(M.at(pivot_row, col));
+    double best_val = std::fabs(M.at(pivot_row, col)); // FIXED: std::fabs
+
     for (long row = pivot_row + 1; row < m; ++row) {
-      double v = std::abs(M.at(row, col));
+      double v = std::fabs(M.at(row, col));
       if (v > best_val) {
         best_val = v;
         best = row;
       }
     }
 
-    if (best_val < LINALG_EPS)
-      continue; // entire column is zero, skip
+    if (best_val < LINALG_EPS) {
+      // Clean up near-zero floating point noise to prevent -0.0
+      for (long row = pivot_row; row < m; ++row)
+        M.at(row, col) = 0.0;
+      continue; // entire column is essentially zero, skip
+    }
 
     // Swap rows if needed
     if (best != pivot_row) {
@@ -258,16 +263,38 @@ static Mat gaussian_echelon(const Mat &A, int &swap_count) {
       ++swap_count;
     }
 
-    // Eliminate rows below pivot
     double pivot = M.at(pivot_row, col);
-    for (long row = pivot_row + 1; row < m; ++row) {
-      double factor = M.at(row, col) / pivot;
-      for (long jj = col; jj < n; ++jj)
+    for (long jj = col; jj < n; ++jj) {
+      M.at(pivot_row, jj) /= pivot;
+    }
+    M.at(pivot_row, col) = 1.0; // force exact 1
+
+    for (long row = 0; row < m; ++row) {
+      if (row == pivot_row)
+        continue; // Skip the pivot row itself
+
+      double factor = M.at(row, col);
+      if (std::fabs(factor) < LINALG_EPS)
+        continue; // Optimization
+
+      // Start from 'col' because everything to the left is already 0
+      for (long jj = col; jj < n; ++jj) {
         M.at(row, jj) -= factor * M.at(pivot_row, jj);
+      }
       M.at(row, col) = 0.0; // force exact zero
     }
 
     ++pivot_row;
+  }
+
+  // Final sweep to turn any practically-zero values (like 1e-16) into
+  // strict 0.0
+  for (long i = 0; i < m; ++i) {
+    for (long j = 0; j < n; ++j) {
+      if (std::fabs(M.at(i, j)) < LINALG_EPS) {
+        M.at(i, j) = 0.0;
+      }
+    }
   }
 
   return M;
@@ -280,13 +307,13 @@ static Mat gaussian_echelon(const Mat &A, int &swap_count) {
 //  Pushes: row-echelon form of A
 // ============================================================================
 
-extern "C" void linalg_gaussian() {
+extern "C" void rref() {
   if (valueStack.empty())
     return;
   Value *v = valueStack.top();
   valueStack.pop();
 
-  if (!require_2d(v, "linalg.gaussian")) {
+  if (!require_2d(v, "linalg.rref")) {
     delete v;
     return;
   }
@@ -309,7 +336,7 @@ extern "C" void linalg_gaussian() {
 //  Pushes: A^-1, or prints an error and pushes nothing if A is singular
 // ============================================================================
 
-extern "C" void linalg_inverse() {
+extern "C" void inverse() {
   if (valueStack.empty())
     return;
   Value *v = valueStack.top();
@@ -336,9 +363,9 @@ extern "C" void linalg_inverse() {
   for (long col = 0; col < n; ++col) {
     // Partial pivot
     long best = col;
-    double best_val = std::abs(aug.at(col, col));
+    double best_val = std::fabs(aug.at(col, col));
     for (long row = col + 1; row < n; ++row) {
-      double val = std::abs(aug.at(row, col));
+      double val = std::fabs(aug.at(row, col));
       if (val > best_val) {
         best_val = val;
         best = row;
@@ -393,7 +420,7 @@ extern "C" void linalg_inverse() {
 //  2×2 diagonal blocks; we extract the real eigenvalues from those blocks.
 // ============================================================================
 
-extern "C" void linalg_eigen() {
+extern "C" void eigen() {
   if (valueStack.empty())
     return;
   Value *v = valueStack.top();
@@ -434,23 +461,73 @@ extern "C" void linalg_eigen() {
     double off = 0.0;
     for (long i = 1; i < n; ++i)
       for (long j = 0; j < i; ++j)
-        off += std::abs(A.at(i, j));
+        off += std::fabs(A.at(i, j));
 
     if (off < LINALG_EPS)
       break;
   }
 
-  // Build result: n × (n+1) matrix
-  //   column 0       = eigenvalues  (diagonal of A after convergence)
-  //   columns 1..n   = eigenvectors (columns of V)
-  Mat result(n, n + 1);
+  // 1. Extract and clean up eigenvalues (n x 1 column vector)
+  Mat evals(n, 1);
   for (long i = 0; i < n; ++i) {
-    result.at(i, 0) = A.at(i, i); // eigenvalue
-    for (long j = 0; j < n; ++j)
-      result.at(j, i + 1) = V.at(j, i); // eigenvector in column i+1
+    double val = A.at(i, i);
+    if (std::fabs(val) < LINALG_EPS)
+      val = 0.0;
+    evals.at(i, 0) = val;
   }
 
-  result.push();
+  // 2. Compute TRUE eigenvectors using Back-Substitution on the Schur Form
+  Mat V_out(n, n);
+  for (long i = 0; i < n; ++i) { // For each eigenvalue
+    double lambda = A.at(i, i);
+
+    // Solve (A - lambda*I) y = 0 for the upper triangular Schur matrix
+    Mat y(n, 1);
+    for (long k = 0; k < n; ++k)
+      y.at(k, 0) = 0.0;
+    y.at(i, 0) = 1.0; // Set current pivot to 1
+
+    for (long j = i - 1; j >= 0; --j) {
+      double sum = 0.0;
+      for (long k = j + 1; k <= i; ++k) {
+        sum += A.at(j, k) * y.at(k, 0);
+      }
+
+      double diff = A.at(j, j) - lambda;
+      // Prevent division by zero if there are repeated eigenvalues
+      if (std::fabs(diff) < LINALG_EPS) {
+        diff = (diff < 0) ? -LINALG_EPS : LINALG_EPS;
+      }
+      y.at(j, 0) = -sum / diff;
+    }
+
+    // Multiply: true_eigenvector = V * y
+    double norm = 0.0;
+    Mat x(n, 1);
+    for (long j = 0; j < n; ++j) {
+      double val = 0.0;
+      // We only need to sum up to 'i' because y[k] is 0 for k > i
+      for (long k = 0; k <= i; ++k) {
+        val += V.at(j, k) * y.at(k, 0);
+      }
+      x.at(j, 0) = val;
+      norm += val * val; // accumulate length for normalisation
+    }
+
+    // Normalize vector and write it horizontally as a ROW in V_out
+    norm = std::sqrt(norm);
+    for (long j = 0; j < n; ++j) {
+      double val = x.at(j, 0) / norm;
+      if (std::fabs(val) < LINALG_EPS)
+        val = 0.0; // clean floating noise
+      V_out.at(i, j) = val;
+    }
+  }
+
+  // 3. Push the results to the stack separately
+  V_out.push(); // Eigenvectors matrix (rows = eigenvectors) pushed first
+                // (bottom)
+  evals.push(); // Eigenvalues vector pushed second (top)
 }
 
 // ============================================================================
@@ -524,7 +601,7 @@ static void apply_householder_right(Mat &M, const std::vector<double> &v,
   }
 }
 
-extern "C" void linalg_svd() {
+extern "C" void svd() {
   if (valueStack.empty())
     return;
   Value *val = valueStack.top();
@@ -580,8 +657,9 @@ extern "C" void linalg_svd() {
   for (int iter = 0; iter < MAX_ITER; ++iter) {
     // Zero out negligible superdiagonal entries
     for (long i = 0; i < n - 1; ++i) {
-      if (std::abs(B.at(i, i + 1)) <
-          LINALG_EPS * (std::abs(B.at(i, i)) + std::abs(B.at(i + 1, i + 1)))) {
+      if (std::fabs(B.at(i, i + 1)) <
+          LINALG_EPS *
+              (std::fabs(B.at(i, i)) + std::fabs(B.at(i + 1, i + 1)))) {
         B.at(i, i + 1) = 0.0;
       }
     }
@@ -589,7 +667,7 @@ extern "C" void linalg_svd() {
     // Check convergence: all superdiagonal elements near zero
     double off = 0.0;
     for (long i = 0; i < n - 1; ++i)
-      off += std::abs(B.at(i, i + 1));
+      off += std::fabs(B.at(i, i + 1));
     if (off < LINALG_EPS)
       break;
 
