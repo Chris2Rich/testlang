@@ -203,12 +203,14 @@ void output() {
     // Scalar: print single ASCII character
     long code = static_cast<long>(val->data[0]);
     std::cout << static_cast<char>(code);
+    std::cout << std::endl;
   } else if (val->shape.size() == 1) {
     // 1D array: print each element as ASCII character (a string)
     for (long i = 0; i < val->shape[0]; ++i) {
       long code = static_cast<long>(val->data[i]);
       std::cout << static_cast<char>(code);
     }
+    std::cout << std::endl;
   } else {
     // Tensor (2D+): error
     std::cerr << "Runtime Error: io.output does not support tensors." << std::endl;
