@@ -177,9 +177,9 @@ void matrix_multiply() {
     return;
   }
 
-  Value *b = valueStack.top();
-  valueStack.pop();
   Value *a = valueStack.top();
+  valueStack.pop();
+  Value *b = valueStack.top();
   valueStack.pop();
 
   if (!a->is_array || !b->is_array || a->shape.size() != 2 ||

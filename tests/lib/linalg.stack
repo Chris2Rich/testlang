@@ -20,5 +20,11 @@ importc "./libraries/linalg"
 // Eigenvectors and Eigenvalues
 // ;; linalg.eigen [[3 3 3][2 1 0][5 3 1]]
 
-// Singular Value Decomposition => TO FIX
-;;; linalg.svd [[3 3 3][2 1 0][5 3 1]]
+// Singular Value Decomposition
+// ;;; linalg.svd [[3 3 3][2 1 0][5 3 1]]
+
+// If we perform SVD, we get back USV^T. We therefore can recalculate the original matrix.
+//; matmul transpose : matmul : linalg.svd [[3 3 3][2 1 0][5 3 1]]
+
+// Works for all shapes but we have to transpose for simplicity if we have m < n in mxn matrix
+; transpose matmul transpose : matmul : linalg.svd transpose [[3 9 17][2 1 -8]]

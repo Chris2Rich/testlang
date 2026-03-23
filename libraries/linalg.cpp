@@ -633,7 +633,7 @@ extern "C" void svd() {
       auto v = householder_vec(B, k, k);
       if (!v.empty()) {
         apply_householder_left(B, v, k, k);
-        apply_householder_right(U, v, k, 0); // accumulate into U^T
+        apply_householder_right(U, v, 0, k);
       }
     }
 
@@ -643,15 +643,13 @@ extern "C" void svd() {
       Mat Bt = B.transpose();
       auto v = householder_vec(Bt, k, k + 1);
       if (!v.empty()) {
-        apply_householder_left(Bt, v, k + 1, k);
+        apply_householder_left(Bt, v, k + 1,
+                               k); // col_start=k: correct, do not change
         B = Bt.transpose();
         apply_householder_right(V, v, 0, k + 1);
       }
     }
   }
-
-  // U was accumulated as U^T, so transpose it back
-  U = U.transpose();
 
   // ---- Step 2: QR iteration on bidiagonal B to extract singular values ----
   for (int iter = 0; iter < MAX_ITER; ++iter) {
@@ -735,23 +733,41 @@ extern "C" void svd() {
   std::sort(idx.begin(), idx.end(),
             [&](long a, long b) { return sigma[a] > sigma[b]; });
 
-  std::vector<double> sigma_sorted(n);
-  Mat U_sorted(m, n), V_sorted(n, n);
+  Mat U_sorted(m, n), V_sorted(n, n), Sigma_mat(n, n);
   for (long k = 0; k < n; ++k) {
-    sigma_sorted[k] = sigma[idx[k]];
+    long original_idx = idx[k];
+
+    // Fill the diagonal matrix
+    Sigma_mat.at(k, k) = sigma[original_idx];
+
+    // Permute U and V columns
     for (long i = 0; i < m; ++i)
-      U_sorted.at(i, k) = U.at(i, idx[k]);
+      U_sorted.at(i, k) = U.at(i, original_idx);
     for (long i = 0; i < n; ++i)
-      V_sorted.at(i, k) = V.at(i, idx[k]);
+      V_sorted.at(i, k) = V.at(i, original_idx);
   }
 
-  // Push: U on bottom, Σ in middle, V on top
-  U_sorted.push();
+  // ---- Step 4: Purge near-zero values (denormal clean-up) ----
+  // Clean U_sorted
+  for (long i = 0; i < m; ++i)
+    for (long j = 0; j < n; ++j)
+      if (std::fabs(U_sorted.at(i, j)) < LINALG_EPS)
+        U_sorted.at(i, j) = 0.0;
 
-  {
-    std::vector<long> shape = {n};
-    valueStack.push(new Value(shape, sigma_sorted.data()));
-  }
+  // Clean Sigma_mat (only needs to check the diagonal)
+  for (long i = 0; i < n; ++i)
+    if (std::fabs(Sigma_mat.at(i, i)) < LINALG_EPS)
+      Sigma_mat.at(i, i) = 0.0;
 
-  V_sorted.push();
+  // Clean V_sorted
+  for (long i = 0; i < n; ++i)
+    for (long j = 0; j < n; ++j)
+      if (std::fabs(V_sorted.at(i, j)) < LINALG_EPS)
+        V_sorted.at(i, j) = 0.0;
+
+  // Push to stack: Order is Bottom -> Top: V, Sigma, U
+  // (Meaning caller pops U, then Sigma, then V)
+  V_sorted.push();  // Bottom
+  Sigma_mat.push(); // Middle (2D n x n matrix)
+  U_sorted.push();  // Top
 }
