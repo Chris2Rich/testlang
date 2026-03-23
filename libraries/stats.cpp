@@ -1,0 +1,319 @@
+#include "../stack_runtime.h"
+#include <algorithm>
+#include <cstdlib>
+#include <iostream>
+#include <numeric>
+#include <unordered_map>
+#include <vector>
+#include <cmath>
+
+static constexpr double epsilon = 1e-9;
+
+// Helper: compute the slice size (product of all dims after the leading axis)
+static long slice_size(const Value *val) {
+    long sz = 1;
+    for (size_t i = 1; i < val->shape.size(); ++i)
+        sz *= val->shape[i];
+    return sz;
+}
+
+// Helper: result shape is val->shape without the leading dimension
+static std::vector<long> tail_shape(const Value *val) {
+    return std::vector<long>(val->shape.begin() + 1, val->shape.end());
+}
+
+extern "C" {
+
+// stats.average — mean across leading axis
+void average() {
+    if (valueStack.empty()) return;
+
+    Value *val = valueStack.top();
+    valueStack.pop();
+
+    if (!val->is_array) {
+        // Scalar average is itself
+        valueStack.push(new Value(val->data[0]));
+        delete val;
+        return;
+    }
+
+    long n      = val->shape[0];
+    long slice  = slice_size(val);
+
+    if (val->shape.size() == 1) {
+        // 1D: reduce to scalar
+        double sum = 0.0;
+        for (long i = 0; i < n; ++i)
+            sum += val->data[i];
+        valueStack.push(new Value(sum / n));
+    } else {
+        std::vector<long> rshape = tail_shape(val);
+        double *result = (double *)malloc(sizeof(double) * slice);
+
+        for (long j = 0; j < slice; ++j) {
+            double sum = 0.0;
+            for (long i = 0; i < n; ++i)
+                sum += val->data[i * slice + j];
+            result[j] = sum / n;
+        }
+
+        valueStack.push(new Value(rshape, result));
+        free(result);
+    }
+
+    delete val;
+}
+
+// stats.median — median across leading axis
+void median() {
+    if (valueStack.empty()) return;
+
+    Value *val = valueStack.top();
+    valueStack.pop();
+
+    if (!val->is_array) {
+        valueStack.push(new Value(val->data[0]));
+        delete val;
+        return;
+    }
+
+    long n     = val->shape[0];
+    long slice = slice_size(val);
+
+    if (val->shape.size() == 1) {
+        std::vector<double> col(val->data, val->data + n);
+        std::sort(col.begin(), col.end());
+        double med = (n % 2 == 0)
+            ? (col[n/2 - 1] + col[n/2]) / 2.0
+            : col[n/2];
+        valueStack.push(new Value(med));
+    } else {
+        std::vector<long> rshape = tail_shape(val);
+        double *result = (double *)malloc(sizeof(double) * slice);
+
+        for (long j = 0; j < slice; ++j) {
+            std::vector<double> col(n);
+            for (long i = 0; i < n; ++i)
+                col[i] = val->data[i * slice + j];
+            std::sort(col.begin(), col.end());
+            result[j] = (n % 2 == 0)
+                ? (col[n/2 - 1] + col[n/2]) / 2.0
+                : col[n/2];
+        }
+
+        valueStack.push(new Value(rshape, result));
+        free(result);
+    }
+
+    delete val;
+}
+
+// stats.mode — most frequent value across leading axis
+// Ties broken by smallest value. Result matches tail shape (or scalar for 1D).
+void mode() {
+    if (valueStack.empty()) return;
+
+    Value *val = valueStack.top();
+    valueStack.pop();
+
+    if (!val->is_array) {
+        valueStack.push(new Value(val->data[0]));
+        delete val;
+        return;
+    }
+
+    long n     = val->shape[0];
+    long slice = slice_size(val);
+
+    auto compute_mode = [&](const std::vector<double> &col) -> double {
+        std::unordered_map<double, long> counts;
+        for (double v : col) counts[v]++;
+        long best_count = -1;
+        double best_val = col[0];
+        for (auto &kv : counts) {
+            if (kv.second > best_count ||
+               (kv.second == best_count && kv.first < best_val)) {
+                best_count = kv.second;
+                best_val   = kv.first;
+            }
+        }
+        return best_val;
+    };
+
+    if (val->shape.size() == 1) {
+        std::vector<double> col(val->data, val->data + n);
+        valueStack.push(new Value(compute_mode(col)));
+    } else {
+        std::vector<long> rshape = tail_shape(val);
+        double *result = (double *)malloc(sizeof(double) * slice);
+
+        for (long j = 0; j < slice; ++j) {
+            std::vector<double> col(n);
+            for (long i = 0; i < n; ++i)
+                col[i] = val->data[i * slice + j];
+            result[j] = compute_mode(col);
+        }
+
+        valueStack.push(new Value(rshape, result));
+        free(result);
+    }
+
+    delete val;
+}
+
+// stats.variance — population variance across leading axis
+void variance() {
+    if (valueStack.empty()) return;
+
+    Value *val = valueStack.top();
+    valueStack.pop();
+
+    if (!val->is_array) {
+        // Variance of a single value is 0
+        valueStack.push(new Value(0.0));
+        delete val;
+        return;
+    }
+
+    long n     = val->shape[0];
+    long slice = slice_size(val);
+
+    if (val->shape.size() == 1) {
+        double sum = 0.0;
+        for (long i = 0; i < n; ++i) sum += val->data[i];
+        double mean = sum / n;
+        double var  = 0.0;
+        for (long i = 0; i < n; ++i) {
+            double d = val->data[i] - mean;
+            var += d * d;
+        }
+        valueStack.push(new Value(var / n));
+    } else {
+        std::vector<long> rshape = tail_shape(val);
+        double *result = (double *)malloc(sizeof(double) * slice);
+
+        for (long j = 0; j < slice; ++j) {
+            double sum = 0.0;
+            for (long i = 0; i < n; ++i)
+                sum += val->data[i * slice + j];
+            double mean = sum / n;
+            double var  = 0.0;
+            for (long i = 0; i < n; ++i) {
+                double d = val->data[i * slice + j] - mean;
+                var += d * d;
+            }
+            result[j] = var / n;
+        }
+
+        valueStack.push(new Value(rshape, result));
+        free(result);
+    }
+
+    delete val;
+}
+
+// stats.predict_linear — fits y = mx + b per column across the leading axis
+// treating row index as x (0, 1, ..., n-1), then predicts row n.
+// Result has the same shape as a single slice (tail shape, or scalar for 1D).
+void predict_linear() {
+    if (valueStack.empty()) return;
+
+    Value *val = valueStack.top();
+    valueStack.pop();
+
+    if (!val->is_array) {
+        // Single point: best prediction is the point itself
+        valueStack.push(new Value(val->data[0]));
+        delete val;
+        return;
+    }
+
+    long n     = val->shape[0];
+    long slice = slice_size(val);
+
+    // Precompute x statistics (same for every column)
+    // x = 0, 1, ..., n-1
+    double x_sum  = (double)n * (n - 1) / 2.0;
+    double x_mean = x_sum / n;
+    double x_var  = 0.0;
+    for (long i = 0; i < n; ++i) {
+        double d = i - x_mean;
+        x_var += d * d;
+    }
+    // x_var is sum of (xi - x_mean)^2; we divide by it for slope
+
+    auto predict_col = [&](const std::vector<double> &col) -> double {
+        double y_mean = 0.0;
+        for (double v : col) y_mean += v;
+        y_mean /= n;
+
+        double cov = 0.0;
+        for (long i = 0; i < n; ++i)
+            cov += (i - x_mean) * (col[i] - y_mean);
+
+        double m = (x_var > 0.0) ? cov / x_var : 0.0;
+        double b = y_mean - m * x_mean;
+        return m * n + b;   // predict at x = n (the next row)
+    };
+
+    if (val->shape.size() == 1) {
+        std::vector<double> col(val->data, val->data + n);
+        valueStack.push(new Value(predict_col(col)));
+    } else {
+        std::vector<long> rshape = tail_shape(val);
+        double *result = (double *)malloc(sizeof(double) * slice);
+
+        for (long j = 0; j < slice; ++j) {
+            std::vector<double> col(n);
+            for (long i = 0; i < n; ++i)
+                col[i] = val->data[i * slice + j];
+            result[j] = predict_col(col);
+        }
+
+        valueStack.push(new Value(rshape, result));
+        free(result);
+    }
+
+    delete val;
+}
+
+void is_markovian() {
+    if (valueStack.empty()) {
+        valueStack.push(new Value(0.0));
+        return;
+    }
+
+    Value *val = valueStack.top();
+    valueStack.pop();
+
+    // Must be a 2D matrix
+    if (!val->is_array || val->shape.size() != 2) {
+        valueStack.push(new Value(0.0));
+        delete val;
+        return;
+    }
+
+    long rows = val->shape[0];
+    long cols = val->shape[1];
+    bool valid = true;
+
+    for (long i = 0; i < rows && valid; ++i) {
+        double row_sum = 0.0;
+        for (long j = 0; j < cols; ++j) {
+            double v = val->data[i * cols + j];
+            if (v < 0.0) {
+                valid = false;
+                break;
+            }
+            row_sum += v;
+        }
+        if (valid && std::abs(row_sum - 1.0) > epsilon)
+            valid = false;
+    }
+
+    valueStack.push(new Value(valid ? 1.0 : 0.0));
+    delete val;
+}
+
+} // extern "C"

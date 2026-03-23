@@ -190,4 +190,30 @@ void input() {
     valueStack.push(new Value(0.0));
   }
 }
+
+void output() {
+  if (valueStack.empty()) {
+    return;
+  }
+
+  Value *val = valueStack.top();
+  valueStack.pop();
+
+  if (!val->is_array) {
+    // Scalar: print single ASCII character
+    long code = static_cast<long>(val->data[0]);
+    std::cout << static_cast<char>(code);
+  } else if (val->shape.size() == 1) {
+    // 1D array: print each element as ASCII character (a string)
+    for (long i = 0; i < val->shape[0]; ++i) {
+      long code = static_cast<long>(val->data[i]);
+      std::cout << static_cast<char>(code);
+    }
+  } else {
+    // Tensor (2D+): error
+    std::cerr << "Runtime Error: io.output does not support tensors." << std::endl;
+  }
+
+  delete val;
+}
 } // extern "C"
