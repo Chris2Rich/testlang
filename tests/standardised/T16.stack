@@ -1,0 +1,2 @@
+importc "./libraries/io"
+? loop 0 io.output io.input _(loop)
