@@ -24,15 +24,15 @@ static std::vector<long> tail_shape(const Value *val) {
 
 extern "C" {
 
-// stats.average — mean across leading axis
-void average() {
+// stats.mean — mean across leading axis
+void mean() {
     if (valueStack.empty()) return;
 
     Value *val = valueStack.top();
     valueStack.pop();
 
     if (!val->is_array) {
-        // Scalar average is itself
+        // Scalar mean is itself
         valueStack.push(new Value(val->data[0]));
         delete val;
         return;
@@ -213,6 +213,59 @@ void variance() {
     delete val;
 }
 
+// stats.sdev — population standard deviation across leading axis
+void sdev() {
+  if (valueStack.empty())
+    return;
+
+  Value *val = valueStack.top();
+  valueStack.pop();
+
+  if (!val->is_array) {
+    // Variance of a single value is 0
+    valueStack.push(new Value(0.0));
+    delete val;
+    return;
+  }
+
+  long n = val->shape[0];
+  long slice = slice_size(val);
+
+  if (val->shape.size() == 1) {
+    double sum = 0.0;
+    for (long i = 0; i < n; ++i)
+      sum += val->data[i];
+    double mean = sum / n;
+    double var = 0.0;
+    for (long i = 0; i < n; ++i) {
+      double d = val->data[i] - mean;
+      var += d * d;
+    }
+    valueStack.push(new Value(pow(var / n, 0.5)));
+  } else {
+    std::vector<long> rshape = tail_shape(val);
+    double *result = (double *)malloc(sizeof(double) * slice);
+
+    for (long j = 0; j < slice; ++j) {
+      double sum = 0.0;
+      for (long i = 0; i < n; ++i)
+        sum += val->data[i * slice + j];
+      double mean = sum / n;
+      double var = 0.0;
+      for (long i = 0; i < n; ++i) {
+        double d = val->data[i * slice + j] - mean;
+        var += d * d;
+      }
+      result[j] = pow(var / n, 0.5);
+    }
+
+    valueStack.push(new Value(rshape, result));
+    free(result);
+  }
+
+  delete val;
+}
+
 // stats.predict_linear — fits y = mx + b per column across the leading axis
 // treating row index as x (0, 1, ..., n-1), then predicts row n.
 // Result has the same shape as a single slice (tail shape, or scalar for 1D).
@@ -278,7 +331,7 @@ void predict_linear() {
     delete val;
 }
 
-void is_markovian() {
+void is_stochastic() {
     if (valueStack.empty()) {
         valueStack.push(new Value(0.0));
         return;

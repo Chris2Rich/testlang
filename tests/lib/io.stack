@@ -1,0 +1,4 @@
+importc "./libraries/io"
+
+// prints the ascii representation of the input if it is a scalar or array
+? start 0 io.output io.input _(start)

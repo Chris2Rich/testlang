@@ -1,0 +1,28 @@
+importc "./libraries/stats"
+importc "./libraries/linalg"
+
+// ; stats.mean [5 6 7 8]
+
+// computes mean over leading axis -> this outputs a 1x7
+// ; stats.mean [[1 2 3 4 5 7 8][3 0 8 1 2 3 7][8 77 2 -3 0 -1 6]]
+
+// computes mean over leading axis -> this outputs a 1x3
+// ; stats.mean transpose [[1 2 3 4 5 7 8][3 0 8 1 2 3 7][8 77 2 -3 0 -1 6]]
+
+// Median
+// ; stats.median [5 6 8]
+// ; stats.median [[1 2 3 4 5 7 8][3 0 8 1 2 3 7][8 77 2 -3 0 -1 6]]
+
+// Mode and standard deviation
+// ; stats.mode [5 0 12 2 0 3 0 3 0  13 32 0 2 2 3 15 1 5 1 1 5 45 3  5  41 5 0 51 5 5 120 5 0]
+// ; stats.sdev [5 0 12 2 0 3 0 3 0  13 32 0 2 2 3 15 1 5 1 1 5 45 3  5  41 5 0 51 5 5 120 5 0]
+
+// Linear regression
+// ; stats.predict_linear [2 4 6]
+// ; stats.predict_linear [2 4 6 5 3 1 10 360 -30]
+
+// Determines if a matrix represents a markov chain
+// ; stats.is_stochastic [[1 0 0 0][0 0.5 0.5 0][0.75 0.125 0 0.125][0.25 0.25 0.35 0.15]]
+
+// Abides by properties of stochastic matrix
+// ;; linalg.eigen [[1 0 0 0][0 0.5 0.5 0][0.75 0.125 0 0.125][0.25 0.25 0.35 0.15]]

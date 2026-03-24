@@ -1,3 +1,0 @@
-importc "./libraries/io"
-
-? start 0 io.output io.input _(start)
