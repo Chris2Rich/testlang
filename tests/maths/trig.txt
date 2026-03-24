@@ -1,4 +1,0 @@
-importc "./libraries/io"
-
-_(loop)
-? loop 0 ; atan iota_n io.input

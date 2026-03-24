@@ -1,5 +1,0 @@
-importc "./libraries/io"
-
-_(loop)
-
-? loop 0 ; where io.input io.input io.input

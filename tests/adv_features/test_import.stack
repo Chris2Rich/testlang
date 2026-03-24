@@ -1,5 +1,0 @@
-import "math"
-importc "./libraries/io"
-
-// Loop that echoes 2x the input
-? loop 0 ; io.input _(loop)

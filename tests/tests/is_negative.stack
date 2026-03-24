@@ -1,0 +1,3 @@
+importc "./libraries/io"
+is_negative => _(end) [121 101 115] _(negative) ? end 0 [110 111] ?< negative
+io.output is_negative io.input

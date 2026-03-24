@@ -1021,12 +1021,12 @@ void print_help(std::ostream &os, char* localpath){
 }
 
 int main(int argc, char *argv[]) {
-  if (argc <= 2 && argv[1] == "help"){
-    print_help(std::cout, argv[0])
+  if (argc == 2 && argv[1] == std::string("help")){
+    print_help(std::cout, argv[0]);
     return 0;
   }
   if (argc < 3 || argc > 6) {
-    print_help(std::cerr, argv[0])
+    print_help(std::cerr, argv[0]);
     return 1;
   }
 
@@ -1057,7 +1057,7 @@ int main(int argc, char *argv[]) {
 
   std::ifstream runtimeCheck(runtimePath);
   if (!runtimeCheck.good()) {
-    std::cerr << "Error: Runtime bitcode file '" << runtimeCheck << "' not found!"
+    std::cerr << "Error: Runtime bitcode file '" << runtimePath << "' not found!"
               << std::endl;
     std::cerr << "Make sure the Testlang runtime bitcode is in the current directory or "
                  "specify its path."
