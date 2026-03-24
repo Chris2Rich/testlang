@@ -525,8 +525,7 @@ extern "C" void eigen() {
   }
 
   // 3. Push the results to the stack separately
-  V_out.push(); // Eigenvectors matrix (rows = eigenvectors) pushed first
-                // (bottom)
+  V_out.push(); // Eigenvectors matrix (rows = eigenvectors) pushed first (bottom)
   evals.push(); // Eigenvalues vector pushed second (top)
 }
 

@@ -1,8 +1,6 @@
 #include "../stack_runtime.h"
 #include <algorithm>
 #include <cstdlib>
-#include <iostream>
-#include <numeric>
 #include <unordered_map>
 #include <vector>
 #include <cmath>
