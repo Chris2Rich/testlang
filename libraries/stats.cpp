@@ -20,11 +20,6 @@ static std::vector<long> tail_shape(const Value *val) {
   return std::vector<long>(val->shape.begin() + 1, val->shape.end());
 }
 
-// -----------------------------------------------------------------------------
-// Insertion sort — O(n^2), but very fast in practice for small n due to low
-// overhead. Used by introsort for sub-arrays at or below INSERTION_THRESHOLD.
-// Operates on the sub-array arr[low..high] inclusive.
-// -----------------------------------------------------------------------------
 static void insertion_sort(std::vector<double> &arr, long low, long high) {
   for (long i = low + 1; i <= high; ++i) {
     double key = arr[i];
