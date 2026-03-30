@@ -99,7 +99,7 @@ def tokenize(source_code):
                 while c < len(source_code) and source_code[c] in " ,\t":
                     c += 1
                 start = c
-                while c < len(source_code) and (source_code[c].isalnum()):
+                while c < len(source_code) and (source_code[c].isalnum() or source_code[c] in "_"):
                     c += 1
                 value = source_code[start:c]
                 yield Token(value, TokenType.IFLESSZERO)
@@ -107,7 +107,7 @@ def tokenize(source_code):
                 while c < len(source_code) and source_code[c] in " ,\t":
                     c += 1
                 start = c
-                while c < len(source_code) and (source_code[c].isalnum()):
+                while c < len(source_code) and (source_code[c].isalnum() or source_code[c] in "_"):
                     c += 1
                 value = source_code[start:c]
                 yield Token(value, TokenType.IFZERO)
