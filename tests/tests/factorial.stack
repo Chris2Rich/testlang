@@ -1,6 +1,6 @@
 importc "./libraries/io"
 
-factorial => * factorial - 1 . ? end - 1 .
+factorial => * factorial - 1 . ?< end - 1 .
 
 _(end)
 ? end 0 ; factorial io.input
