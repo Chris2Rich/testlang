@@ -28,7 +28,7 @@ clang++ -std=c++17 -O3 \
 
 # Build the runtime library as bitcode
 echo "Compiling runtime library to bitcode..."
-clang++ -std=c++17 -O3 -emit-llvm -c stack_runtime.cpp -o stack_runtime.bc
+clang++ -std=c++17 -O3 -march=native -ffast-math -fpp-contract=fast -Rpass=loop-vectorize -emit-llvm -c stack_runtime.cpp -o stack_runtime.bc
 
 echo "Build complete!"
 echo ""
